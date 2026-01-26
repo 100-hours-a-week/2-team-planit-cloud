@@ -8,7 +8,7 @@ HOST_TAG="${HOST_TAG:-planit-prod}"                                   # 알림 �
 
 APIS=(                                                                 # "이름|METHOD|URL|허용코드(콤마)|지연임계치(ms)|추가헤더(선택; 세미콜론 구분)"
   "get_backend|GET|http://127.0.0.1:8080/api/health|200|700|"
-  "get_ai|GET|http://127.0.0.1:8080/api/health|200|900|"
+  "get_ai|GET|http://127.0.0.1:8000/health|200|900|"
 )
 
 now_kst() { TZ=Asia/Seoul date '+%Y-%m-%d %H:%M:%S KST'; }            # 현재 시간을 KST 문자열로 반환

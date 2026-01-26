@@ -7,8 +7,8 @@ WEBHOOK_URL="${DISCORD_WEBHOOK_URL:?DISCORD_WEBHOOK_URL is required}" # 디스�
 HOST_TAG="${HOST_TAG:-planit-prod}"                                  # 알림 태그(기본값 planit-prod)
 
 URLS=(                                                                # "이름|URL" 형태로 헬스체크 대상 목록
-  "backend|http://127.0.0.1:8080/actuator/health"
-  "ai|http://127.0.0.1:3000/health"
+  "backend|http://127.0.0.1:8080/api/health"
+  "ai|http://127.0.0.1:8000/health"
 )
 
 now_kst() { TZ=Asia/Seoul date '+%Y-%m-%d %H:%M:%S KST'; }           # 현재 시간을 KST로 출력

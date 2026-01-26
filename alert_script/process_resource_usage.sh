@@ -8,7 +8,7 @@ HOST_TAG="${HOST_TAG:-planit-prod}"        # 알림에 붙일 서버/환경 태�
 
 TARGETS=(                                 # "이름|포트" 감시 대상 목록
   "backend|8080"
-  "ai|3000"
+  "ai|8000"
   "caddy|80"
 )
 
