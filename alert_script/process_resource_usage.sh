@@ -59,7 +59,23 @@ proc_rss_mb() {                            # PID의 RSS 메모리(MB) 조회
   echo $((rss_kb / 1024))
 }
 
+conn_count_by_port() {                        # 로컬 포트 기준 TCP 소켓(연결/대기 포함) 개수
+  local port="$1"
+  if command -v ss >/dev/null 2>&1; then
+    # sport=:PORT 로컬 포트만 필터링. 헤더 1줄 제외.
+    ss -ant "( sport = :${port} )" 2>/dev/null | tail -n +2 | wc -l | tr -d ' '
+    return 0
+  fi
+  if command -v lsof >/dev/null 2>&1; then
+    # LISTEN+ESTABLISHED 등 포함한 TCP 소켓 수(포트 기준)
+    lsof -nP -iTCP:"$port" 2>/dev/null | tail -n +2 | wc -l | tr -d ' '
+    return 0
+  fi
+  echo 0
+}
+
 declare -a alerts=()                       # 알림 메시지 누적 배열
+declare -a conn_lines=()                      # 포트별 연결 수 누적 배열
 
 for item in "${TARGETS[@]}"; do            # 대상(포트)별로 PID/리소스 측정
   IFS='|' read -r name port <<< "$item"
@@ -69,12 +85,26 @@ for item in "${TARGETS[@]}"; do            # 대상(포트)별로 PID/리소스 
   cpu="$(proc_cpu "$pid" || echo 0)"
   rss_mb="$(proc_rss_mb "$pid" || echo 0)"
 
-  (( cpu >= CPU_THRESHOLD )) && alerts+=("${name}(pid ${pid}, port ${port}): CPU ${cpu}% ≥ ${CPU_THRESHOLD}%")
-  (( rss_mb >= RSS_THRESHOLD_MB )) && alerts+=("${name}(pid ${pid}, port ${port}): RSS ${rss_mb}MB ≥ ${RSS_THRESHOLD_MB}MB")
+  if (( cpu >= CPU_THRESHOLD )); then
+    alerts+=("${name}(pid ${pid}, port ${port}): CPU ${cpu}% ≥ ${CPU_THRESHOLD}%")
+    conn="$(conn_count_by_port "$port")"
+    conn_lines+=("${name} port ${port} connections: ${conn}")
+  fi
+
+  if (( rss_mb >= RSS_THRESHOLD_MB )); then
+    alerts+=("${name}(pid ${pid}, port ${port}): RSS ${rss_mb}MB ≥ ${RSS_THRESHOLD_MB}MB")
+    conn="$(conn_count_by_port "$port")"
+    conn_lines+=("${name} port ${port} connections: ${conn}")
+  fi
 done
 
 if (( ${#alerts[@]} > 0 )); then           # 임계치 초과가 있으면 디스코드로 전송
   msg="시간: $(now_kst)\n내용:\n- $(printf "%s\n" "${alerts[@]}" | sed 's/^/- /')"
+
+  # 같은 대상이 CPU/RSS 둘 다 걸리면 conn_lines 중복될 수 있어서 uniq 처리
+  if (( ${#conn_lines[@]} > 0 )); then
+    msg="${msg}\n\n포트 연결 수:\n$(printf "%s\n" "${conn_lines[@]}" | awk '!seen[$0]++' | sed 's/^/- /')"
+  fi
   send_discord "성능 이상(임계치 초과) 감지" "$msg"
 fi
 
