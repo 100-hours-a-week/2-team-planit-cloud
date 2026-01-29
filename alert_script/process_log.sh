@@ -10,7 +10,6 @@ LOG_FILES=(                                                           # "로그�
   "/var/www/planit/backend/app.log|backend"
   "/var/www/planit/ai/app.log|ai"
   "/var/log/caddy/access.log|web"
-  "/var/log/caddy/error.log|web"
 )
 
 RULES=(                                                               # "키|정규식|심각도|힌트" 감지 규칙 목록
@@ -25,14 +24,6 @@ RULES=(                                                               # "키|정
   "web_429|(\"status\":429|\\s429\\s)|WARN|429 발생(과도 요청/레이트리밋) - 트래픽 스파이크 가능"
   "web_client_abort|(\\s499\\s|client.*(canceled|closed)|context canceled)|WARN|클라이언트 요청 중단 증가(타임아웃/네트워크/프론트 이탈)"
   "web_static_404|(\\s404\\s.*\\.(js|css|png|jpg|jpeg|svg|webp|ico)(\\?|\\s|$)|\"status\":404.*\\.(js|css|png|jpg|jpeg|svg|webp|ico))|WARN|정적 리소스 404(배포 누락/경로 문제) 의심"
-
-  # --- Caddy Error ---
-  "web_upstream_refused|(connection refused|connect: connection refused|dial tcp .*: connect: connection refused)|CRITICAL|업스트림(백엔드/AI) 접속 거부 - 서비스 다운/포트 문제 의심"
-  "web_upstream_timeout|(i/o timeout|context deadline exceeded|timeout while|timed out)|ERROR|업스트림 타임아웃 - 지연/병목/다운 의심"
-  "web_dns|(no such host|SERVFAIL|NXDOMAIN|Temporary failure in name resolution)|ERROR|DNS/호스트 해석 실패"
-  "web_tls|(TLS handshake error|remote error: tls|certificate|acme|OCSP|x509)|ERROR|TLS/인증서 문제 의심(인증서/핸드셰이크/ACME)"
-  "web_fs|(permission denied|no such file or directory|file does not exist)|ERROR|정적 파일/권한 문제 의심(배포/권한/경로)"
-  "web_fd|(too many open files|EMFILE)|CRITICAL|파일 디스크립터 부족 - 트래픽/리소스 한계 의심"
 )
 
 now_kst(){ TZ=Asia/Seoul date '+%Y-%m-%d %H:%M:%S KST'; }            # 현재 시간을 KST 문자열로 반환
