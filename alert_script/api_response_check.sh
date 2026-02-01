@@ -67,20 +67,36 @@ check_api() {                                                         # API 1개
   local -a header_args=()                                             # 헤더 인자 구성
   IFS=$'\0' read -r -d '' -a header_args < <(build_header_args "$header_str" && printf '\0')
 
-  local out http_code time_total                                      # curl 결과 파싱(코드/총소요시간)
-  out="$(curl -sS "${header_args[@]}" -X "$method" \
-        --connect-timeout 2 --max-time 5 \
-        -o /dev/null -w "%{http_code} %{time_total}" \
-        "$url" 2>/dev/null || true)"
+  local out http_code time_total latency_ms                           # curl 결과 파싱(코드/총소요시간)
+  local max_retries=3                                                 # 총 시도 횟수 (최초 1회 + 재시도 2회)
 
-  http_code="$(awk '{print $1}' <<< "$out" | tr -d '\r\n')"           # HTTP 상태코드
-  time_total="$(awk '{print $2}' <<< "$out" | tr -d '\r\n')"          # 총소요시간(초)
-  [[ -n "$http_code" ]] || http_code="000"                            # 연결 실패 등 예외 처리
-  [[ -n "$time_total" ]] || time_total="0"
+  for (( i=1; i<=max_retries; i++ )); do
 
-  local latency_ms                                                    # 초 -> ms 변환(반올림)
-  latency_ms="$(awk -v t="$time_total" 'BEGIN{printf "%.0f", t*1000}')"
+    out="$(curl -sS "${header_args[@]}" -X "$method" \
+          --connect-timeout 2 --max-time 5 \
+          -o /dev/null -w "%{http_code} %{time_total}" \
+          "$url" 2>/dev/null || true)"
 
+    http_code="$(awk '{print $1}' <<< "$out" | tr -d '\r\n')"           # HTTP 상태코드
+    time_total="$(awk '{print $2}' <<< "$out" | tr -d '\r\n')"          # 총소요시간(초)
+    [[ -n "$http_code" ]] || http_code="000"                            # 연결 실패 등 예외 처리
+    [[ -n "$time_total" ]] || time_total="0"
+                                                 # 초 -> ms 변환(반올림)
+    latency_ms="$(awk -v t="$time_total" 'BEGIN{printf "%.0f", t*1000}')"
+
+    # 성공 여부 판단: 상태코드 OK && 지연시간 OK
+    if is_allowed_code "$http_code" "$allowed_codes" && [[ "$latency_ms" -le "$max_ms" ]]; then
+        return 0                                                         # 성공 시 즉시 함수 종료 (알림 안 보냄)
+    fi
+
+    # 실패했지만 아직 재시도 횟수가 남았다면 대기 후 재시도
+    if [[ $i -lt $max_retries ]]; then
+        sleep 1  # 1초 대기 (네트워크 깜빡임 해소)
+        continue
+    fi
+  done
+
+  # 3회 모두 실패. 알림 전송 로직 실행
   if ! is_allowed_code "$http_code" "$allowed_codes"; then            # 상태코드 임계치 위반
     send_discord "API 체크 실패(상태코드): ${name}" \
 "시간: $(now_kst)
