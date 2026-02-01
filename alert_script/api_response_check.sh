@@ -5,10 +5,12 @@ set -euo pipefail  # 에러/미정의 변수/파이프 실패 시 즉시 종료
 
 WEBHOOK_URL="${DISCORD_WEBHOOK_URL:?DISCORD_WEBHOOK_URL is required}" # 디스코드 웹훅 URL(필수)
 HOST_TAG="${HOST_TAG:-planit-prod}"                                   # 알림 태그(기본값 planit-prod)
+EC2_HOST="${EC2_PUBLIC_IP:-127.0.0.1}"                                # EC2 public IP(기본값 로컬)
 
 APIS=(                                                                 # "이름|METHOD|URL|허용코드(콤마)|지연임계치(ms)|추가헤더(선택; 세미콜론 구분)"
-  "get_backend|GET|http://127.0.0.1:8080/api/health|200|700|"
-  "get_ai|GET|http://127.0.0.1:8000/health|200|900|"
+  "get_backend|GET|http://${EC2_HOST}:8080/api/health|200|700|"
+  "get_ai|GET|http://${EC2_HOST}:8000/health|200|900|"
+  "get_posts|GET|http://${EC2_HOST}:8080/posts|200|1000|"
 )
 
 now_kst() { TZ=Asia/Seoul date '+%Y-%m-%d %H:%M:%S KST'; }            # 현재 시간을 KST 문자열로 반환
