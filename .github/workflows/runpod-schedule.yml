@@ -1,0 +1,123 @@
+name: RunPod Auto Start/Stop (KST)
+
+on:
+  schedule:
+    # 13:55 KST = 04:55 UTC
+    - cron: "55 4 * * *"
+    # 02:00 KST = 17:00 UTC
+    - cron: "0 17 * * *"
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "RunPod action to run (start/stop)"
+        required: true
+        type: choice
+        options:
+          - start
+          - stop
+
+jobs:
+  runpod-power:
+    runs-on: ubuntu-latest
+    env:
+      RUNPOD_POD_ID: ${{ secrets.RUNPOD_POD_ID }}
+      RUNPOD_API_KEY: ${{ secrets.RUNPOD_API_KEY }}
+      DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+
+    steps:
+      - name: Decide action (schedule or manual)
+        id: decide
+        run: |
+          set -euo pipefail
+
+          EVENT_NAME="${{ github.event_name }}"
+
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            # 수동 실행: 입력값 사용
+            ACTION="${{ inputs.action }}"
+            echo "action=$ACTION" >> "$GITHUB_OUTPUT"
+            echo "mode=manual" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # 스케줄 실행: 어떤 cron이었는지로 결정
+          SCHEDULE="${{ github.event.schedule }}"
+          if [ "$SCHEDULE" = "55 4 * * *" ]; then
+            echo "action=start" >> "$GITHUB_OUTPUT"
+            echo "mode=schedule" >> "$GITHUB_OUTPUT"
+          elif [ "$SCHEDULE" = "0 17 * * *" ]; then
+            echo "action=stop" >> "$GITHUB_OUTPUT"
+            echo "mode=schedule" >> "$GITHUB_OUTPUT"
+          else
+            echo "action=none" >> "$GITHUB_OUTPUT"
+            echo "mode=unknown" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: RunPod start/stop with retry (max 10)
+        if: steps.decide.outputs.action != 'none'
+        id: runpod
+        run: |
+          set -euo pipefail
+
+          ACTION="${{ steps.decide.outputs.action }}"
+          POD_ID="${RUNPOD_POD_ID}"
+          KEY="${RUNPOD_API_KEY}"
+
+          if [ -z "${POD_ID:-}" ] || [ -z "${KEY:-}" ]; then
+            echo "Missing RUNPOD_POD_ID or RUNPOD_API_KEY in secrets."
+            exit 1
+          fi
+
+          URL="https://rest.runpod.io/v1/pods/${POD_ID}/${ACTION}"
+
+          echo "Action: $ACTION"
+          echo "URL: $URL"
+
+          for i in $(seq 1 10); do
+            echo "Attempt $i/10..."
+            if curl -fsS --max-time 20 \
+              --request POST \
+              --url "$URL" \
+              --header "Authorization: Bearer ${KEY}"
+            then
+              echo "SUCCESS on attempt $i"
+              exit 0
+            fi
+
+            sleep_sec=$((i * 5))
+            echo "Failed attempt $i. Sleeping ${sleep_sec}s..."
+            sleep "$sleep_sec"
+          done
+
+          echo "FAILED after 10 attempts."
+          exit 1
+
+      - name: Notify Discord on success
+        if: success() && steps.decide.outputs.action != 'none'
+        run: |
+          set -euo pipefail
+          ACTION="${{ steps.decide.outputs.action }}"
+          MODE="${{ steps.decide.outputs.mode }}"
+          RUN_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+          curl -fsS -H "Content-Type: application/json" \
+            -X POST \
+            -d "{\"content\":\"RunPod ${ACTION} 성공 (${MODE})\n${RUN_URL}\"}" \
+            "${DISCORD_WEBHOOK_URL}"
+
+      - name: Notify Discord on failure
+        if: failure()
+        run: |
+          set -euo pipefail
+          ACTION="${{ steps.decide.outputs.action }}"
+          MODE="${{ steps.decide.outputs.mode }}"
+          RUN_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+          if [ "${ACTION:-none}" = "none" ]; then
+            ACTION="unknown"
+          fi
+
+          curl -fsS -H "Content-Type: application/json" \
+            -X POST \
+            -d "{\"content\":\"RunPod ${ACTION} 실패 (${MODE}) (최대 10회 재시도 후 실패)\n${RUN_URL}\"}" \
+            "${DISCORD_WEBHOOK_URL}"
