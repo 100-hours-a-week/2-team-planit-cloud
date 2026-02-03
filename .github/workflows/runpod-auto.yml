@@ -283,7 +283,7 @@ jobs:
 
           POD="${{ steps.final_pod.outputs.pod_id }}"
           BASE="https://${POD}-8000.proxy.runpod.net"
-          V1="${BASE}/v1"
+          V1="${BASE}"
 
           # 30분 = 1800초 = 180회 * 10초
           for i in $(seq 1 180); do
