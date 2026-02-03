@@ -323,8 +323,6 @@ jobs:
             || echo "IP may already be in security group"
           sleep 10
 
-## 여기까지 진행
-
       - name: Update AI .env VLLM_BASE_URL only and restart AI server
         if: steps.decide.outputs.action == 'start'
         uses: appleboy/ssh-action@v1.0.3
@@ -361,7 +359,9 @@ jobs:
 
             # AI 서버 재시작
             sudo fuser -k 8000/tcp || true
-            nohup "$APP_DIR/.venv/bin/python" "$APP_DIR/main.py" > "$LOG" 2>&1 &
+            echo "STEP: start app"
+            cd "$APP_DIR"
+            nohup ./.venv/bin/python ./main.py > "$LOG" 2>&1 &
 
             # 헬스체크
             for retry_count in {1..30}; do
