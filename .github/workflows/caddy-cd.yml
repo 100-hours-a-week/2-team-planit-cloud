@@ -1,0 +1,76 @@
+name: Deploy Caddyfile to EC2
+
+on:
+  push:
+    paths:
+      - 'caddy/Caddyfile'  # Caddyfile만 바뀌었을 때 실행
+    branches:
+      - main
+      - master
+
+jobs:
+  deploy-caddyfile:
+    runs-on: ubuntu-latest
+    env:
+      EC2_HOST: ${{ secrets.EC2_HOST }}
+      EC2_USERNAME: ${{ secrets.EC2_USERNAME }}
+      EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # SSH 허용을 위해 Actions runner IP를 SG에 임시 추가
+      - name: Get GitHub Actions IP
+        id: get-ip
+        uses: haythem/public-ip@v1.3
+
+      - name: Add IP to Security Group
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: ap-northeast-2
+        run: |
+          aws ec2 authorize-security-group-ingress \
+            --group-id ${{ secrets.SECURITY_GROUP_ID }} \
+            --protocol tcp \
+            --port 22 \
+            --cidr ${{ steps.get-ip.outputs.ipv4 }}/32 \
+            || echo "IP may already in security group"
+          sleep 10
+
+      - name: Copy Caddyfile to EC2
+        uses: appleboy/scp-action@v0.1.7  # Caddyfile을 EC2 /tmp로 전송
+        with:
+          host: ${{ env.EC2_HOST }}
+          username: ${{ env.EC2_USERNAME }}
+          key: ${{ env.EC2_SSH_KEY }}
+          source: "caddy/Caddyfile"
+          target: "/tmp"
+
+      # etc/caddy/ 경로로 복사 후 reload
+      - name: Install Caddyfile and reload Caddy
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ env.EC2_HOST }}
+          username: ${{ env.EC2_USERNAME }}
+          key: ${{ env.EC2_SSH_KEY }}
+          script: |
+            set -e
+            sudo cp /tmp/Caddyfile /etc/caddy/Caddyfile
+            sudo systemctl reload caddy
+
+      # 보안을 위해 배포 후 SG에서 runner IP 제거
+      - name: Remove IP from Security Group
+        if: always()
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: ap-northeast-2
+        run: |
+          aws ec2 revoke-security-group-ingress \
+            --group-id ${{ secrets.SECURITY_GROUP_ID }} \
+            --protocol tcp \
+            --port 22 \
+            --cidr ${{ steps.get-ip.outputs.ipv4 }}/32 \
+            || echo "Failed to remove IP or rule not found"
