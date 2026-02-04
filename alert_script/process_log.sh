@@ -12,29 +12,33 @@ LOG_FILES=(                                                           # "로그�
   "/var/log/caddy/access.log|web"
 )
 
-RULES=(                                                               # "키|정규식|심각도|힌트" 감지 규칙 목록
-  "db_sql|SQLException|ERROR|DB/SQL 오류 의심"
-  "oom|OutOfMemoryError|CRITICAL|메모리(OOM) 의심"
-  "timeout|timed out|WARN|타임아웃/지연 의심"
-  "boot_fail|APPLICATION FAILED TO START|CRITICAL|기동 실패"
-  "upstream|upstream prematurely closed|ERROR|업스트림(백엔드) 문제 의심"
+# RULES 내부 정규식에 '|'(OR)이 들어가서, 필드 구분자를 '|'로 쓰면 파싱이 깨짐.
+# 그래서 거의 안 쓰는 구분자(0x1F, Unit Separator)를 사용.
+SEP=$'\x1f'
+
+RULES=(                                                               # "키<SEP>정규식<SEP>심각도<SEP>힌트"
+  "db_sql${SEP}SQLException${SEP}ERROR${SEP}DB/SQL 오류 의심"
+  "oom${SEP}OutOfMemoryError${SEP}CRITICAL${SEP}메모리(OOM) 의심"
+  "timeout${SEP}timed out${SEP}WARN${SEP}타임아웃/지연 의심"
+  "boot_fail${SEP}APPLICATION FAILED TO START${SEP}CRITICAL${SEP}기동 실패"
+  "upstream${SEP}upstream prematurely closed${SEP}ERROR${SEP}업스트림(백엔드) 문제 의심"
 
   # --- Caddy Access ---
-  "web_5xx|(\"status\":5[0-9]{2}|\\s5[0-9]{2}\\s)|CRITICAL|웹 서버 5xx 응답 발생(서버 오류)"
-  "web_429|(\"status\":429|\\s429\\s)|WARN|429 발생(과도 요청/레이트리밋) - 트래픽 스파이크 가능"
-  "web_client_abort|(\\s499\\s|client.*(canceled|closed)|context canceled)|WARN|클라이언트 요청 중단 증가(타임아웃/네트워크/프론트 이탈)"
-  "web_static_404|(\\s404\\s.*\\.(js|css|png|jpg|jpeg|svg|webp|ico)(\\?|\\s|$)|\"status\":404.*\\.(js|css|png|jpg|jpeg|svg|webp|ico))|WARN|정적 리소스 404(배포 누락/경로 문제) 의심"
+  "web_5xx${SEP}(\"status\":5[0-9]{2}|\\s5[0-9]{2}\\s)${SEP}CRITICAL${SEP}웹 서버 5xx 응답 발생(서버 오류)"
+  "web_429${SEP}(\"status\":429|\\s429\\s)${SEP}WARN${SEP}429 발생(과도 요청/레이트리밋) - 트래픽 스파이크 가능"
+  "web_client_abort${SEP}(\\s499\\s|client.*(canceled|closed)|context canceled)${SEP}WARN${SEP}클라이언트 요청 중단 증가(타임아웃/네트워크/프론트 이탈)"
+  "web_static_404${SEP}(\\s404\\s.*\\.(js|css|png|jpg|jpeg|svg|webp|ico)(\\?|\\s|$)|\"status\":404.*\\.(js|css|png|jpg|jpeg|svg|webp|ico))${SEP}WARN${SEP}정적 리소스 404(배포 누락/경로 문제) 의심"
 )
 
-now_kst(){ TZ=Asia/Seoul date '+%Y-%m-%d %H:%M:%S KST'; }            # 현재 시간을 KST 문자열로 반환
+now_kst(){ TZ=Asia/Seoul date '+%Y-%m-%d %H:%M:%S KST'; }
 
-json_escape() {                                                      # 디스코드 JSON 전송을 위한 문자열 escape
+json_escape() {
   local s="$1"
   s="${s//\\/\\\\}"; s="${s//\"/\\\"}"; s="${s//$'\n'/\\n}"
   printf "%s" "$s"
 }
 
-send_discord() {                                                     # 디스코드 웹훅으로 메시지 전송
+send_discord() {
   local title="$1"
   local body="$2"
   local content="**[${HOST_TAG}] ${title}**\n${body}"
@@ -45,22 +49,23 @@ send_discord() {                                                     # 디스코
     "$WEBHOOK_URL" >/dev/null || true
 }
 
-tail -n 0 -F -v $(printf "%q " "${LOG_FILES[@]%%|*}") 2>/dev/null | \ # 로그 파일을 새로 추가되는 줄만 스트리밍으로 읽기
-while IFS= read -r line; do                                          # 들어오는 로그 라인을 한 줄씩 처리
-  if [[ "$line" =~ ^==\>\ (.*)\ \<== ]]; then                        # tail -v가 출력하는 "현재 파일" 헤더를 감지
-    current_file="${BASH_REMATCH[1]}"                                 # 현재 읽고 있는 파일 경로 저장
-    current_comp="unknown"                                            # 현재 컴포넌트 기본값 설정
-    for pair in "${LOG_FILES[@]}"; do                                 # 파일 경로에 맞는 컴포넌트명 매핑
+# tail -v 헤더(==> file <==)로 현재 파일을 추적해서 컴포넌트를 매핑
+tail -n 0 -F -v $(printf "%q " "${LOG_FILES[@]%%|*}") 2>/dev/null |
+while IFS= read -r line; do
+  if [[ "$line" =~ ^==\>\ (.*)\ \<== ]]; then
+    current_file="${BASH_REMATCH[1]}"
+    current_comp="unknown"
+    for pair in "${LOG_FILES[@]}"; do
       f="${pair%%|*}"
       c="${pair##*|}"
       [[ "$f" == "$current_file" ]] && current_comp="$c"
     done
-    continue                                                          # 헤더 라인은 규칙 매칭 대상이 아니므로 다음 줄로
+    continue
   fi
 
-  for rule in "${RULES[@]}"; do                                      # 각 규칙을 현재 로그 라인에 매칭
-    IFS='|' read -r key regex sev hint <<< "$rule"
-    if echo "$line" | grep -Eiq "$regex"; then                        # 정규식이 매칭되면 해당 장애로 판단
+  for rule in "${RULES[@]}"; do
+    IFS=$'\x1f' read -r key regex sev hint <<< "$rule"
+    if echo "$line" | grep -Eiq "$regex"; then
       send_discord "로그 감지(${sev}): ${current_comp}/${key}" \
 "시간: $(now_kst)
 힌트: ${hint}
