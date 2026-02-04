@@ -25,4 +25,10 @@ planit-ai.store {
 		# 정적 파일 서버 활성화
 		file_server
 	}
+
+	# 차단할 IP
+    @blocked {
+        remote_ip 211.244.225.166  # 26.02.03 HTTP Flood Attack
+    }
+    abort @blocked
 }
