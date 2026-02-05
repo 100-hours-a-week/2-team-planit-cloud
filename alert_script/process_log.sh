@@ -27,15 +27,23 @@ RULES=(                                                               # "키<SEP
   "error_text${SEP}(^|[^[:alnum:]_])ERROR([^[:alnum:]_]|$)${SEP}ERROR${SEP}에러 로그 문자열 감지"
 
   # --- Caddy Access ---
-  "web_5xx${SEP}(\"status\"\\s*:\\s*5[0-9]{2}|\\s5[0-9]{2}\\s)${SEP}CRITICAL${SEP}웹 서버 5xx 응답 발생(서버 오류)"
-  "web_4xx${SEP}(\"status\"\\s*:\\s*4[0-9]{2}|\\s4[0-9]{2}\\s)${SEP}WARN${SEP}웹 서버 4xx 응답 발생(클라이언트 오류)"
-  "web_429${SEP}(\"status\"\\s*:\\s*429|\\s429\\s)${SEP}WARN${SEP}429 발생(과도 요청/레이트리밋) - 트래픽 스파이크 가능"
-  "web_client_abort${SEP}(\\s499\\s|client.*(canceled|closed)|context canceled)${SEP}WARN${SEP}클라이언트 요청 중단 증가(타임아웃/네트워크/프론트 이탈)"
-  "web_static_404${SEP}(\\s404\\s.*\\.(js|css|png|jpg|jpeg|svg|webp|ico)(\\?|\\s|$)|\"status\":404.*\\.(js|css|png|jpg|jpeg|svg|webp|ico))${SEP}WARN${SEP}정적 리소스 404(배포 누락/경로 문제) 의심"
+  "web_5xx${SEP}(\"status\"[[:space:]]*:[[:space:]]*5[0-9]{2}|[[:space:]]5[0-9]{2}[[:space:]])${SEP}CRITICAL${SEP}웹 서버 5xx 응답 발생(서버 오류)"
+  "web_4xx${SEP}(\"status\"[[:space:]]*:[[:space:]]*4[0-9]{2}|[[:space:]]4[0-9]{2}[[:space:]])${SEP}WARN${SEP}웹 서버 4xx 응답 발생(클라이언트 오류)"
+  "web_429${SEP}(\"status\"[[:space:]]*:[[:space:]]*429|[[:space:]]429[[:space:]])${SEP}WARN${SEP}429 발생(과도 요청/레이트리밋) - 트래픽 스파이크 가능"
+  "web_client_abort${SEP}([[:space:]]499[[:space:]]|client.*(canceled|closed)|context canceled)${SEP}WARN${SEP}클라이언트 요청 중단 증가(타임아웃/네트워크/프론트 이탈)"
+  "web_static_404${SEP}([[:space:]]404[[:space:]].*\\.(js|css|png|jpg|jpeg|svg|webp|ico)(\\?|[[:space:]]|$)|\"status\":404.*\\.(js|css|png|jpg|jpeg|svg|webp|ico))${SEP}WARN${SEP}정적 리소스 404(배포 누락/경로 문제) 의심"
 )
 
 now_kst(){ TZ=Asia/Seoul date '+%Y-%m-%d %H:%M:%S KST'; }
 now_epoch(){ date +%s; }
+fmt_kst_from_epoch() {
+  local ts="$1"
+  if [[ -z "${ts:-}" || "$ts" == "0" ]]; then
+    echo "없음"
+    return 0
+  fi
+  TZ=Asia/Seoul date -d "@$ts" '+%Y-%m-%d %H:%M:%S KST'
+}
 
 json_escape() {
   local s="$1"
@@ -55,7 +63,7 @@ send_discord() {
 }
 
 # 동일 룰/컴포넌트 기준으로 요약+쿨다운 동작
-# 반환: "<summary_count> <send_now>"
+# 반환: "<summary_count> <send_now> <last_epoch>"
 cooldown_status() {
   local key="$1" now last count tmp lock_file fd
   now="$(now_epoch)"
@@ -78,7 +86,7 @@ cooldown_status() {
     printf "%s\t%s\t%s\n" "$key" "$now" 0 >> "$tmp"
     mv "$tmp" "$COOLDOWN_STATE"
     exec {fd}>&-
-    printf "%s %s\n" "${count:-0}" 1
+    printf "%s %s %s\n" "${count:-0}" 1 "$last"
     return 0
   fi
 
@@ -88,7 +96,7 @@ cooldown_status() {
   printf "%s\t%s\t%s\n" "$key" "$last" "$count" >> "$tmp"
   mv "$tmp" "$COOLDOWN_STATE"
   exec {fd}>&-
-  printf "0 0\n"
+  printf "0 0 %s\n" "$last"
 }
 
 # tail -v 헤더(==> file <==)로 현재 파일을 추적해서 컴포넌트를 매핑
@@ -109,18 +117,29 @@ while IFS= read -r line; do
     IFS=$'\x1f' read -r key regex sev hint <<< "$rule"
     if echo "$line" | grep -Eiq "$regex"; then
       cooldown_key="${current_comp}|${key}"
-      read -r summary_count send_now <<< "$(cooldown_status "$cooldown_key")"
+      read -r summary_count send_now last_epoch <<< "$(cooldown_status "$cooldown_key")"
       if (( summary_count > 0 )); then
-        send_discord "로그 요약(${sev}): ${current_comp}/${key}" \
-"시간: $(now_kst)
+        send_discord "[LOG] 로그 요약(${sev}): ${current_comp}/${key}" \
+"====================
+TYPE: LOG SUMMARY
+SEVERITY: ${sev}
+====================
+시간: $(now_kst)
+컴포넌트: ${current_comp}
+규칙: ${key}
 요약:
+- 마지막 알림: $(fmt_kst_from_epoch "$last_epoch")
 - 마지막 알림 이후 추가 ${summary_count}회 발생"
       fi
       if (( send_now == 0 )); then
         continue
       fi
-      send_discord "로그 감지(${sev}): ${current_comp}/${key}" \
-"시간: $(now_kst)
+      send_discord "[LOG] 로그 감지(${sev}): ${current_comp}/${key}" \
+"====================
+TYPE: LOG EVENT
+SEVERITY: ${sev}
+====================
+시간: $(now_kst)
 컴포넌트: ${current_comp}
 규칙: ${key}
 힌트: ${hint}

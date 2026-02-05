@@ -15,8 +15,16 @@ URLS=(                                                                # "이름|
 
 now_kst() { TZ=Asia/Seoul date '+%Y-%m-%d %H:%M:%S KST'; }           # 현재 시간을 KST로 출력
 now_epoch() { date +%s; }
+fmt_kst_from_epoch() {
+  local ts="$1"
+  if [[ -z "${ts:-}" || "$ts" == "0" ]]; then
+    echo "없음"
+    return 0
+  fi
+  TZ=Asia/Seoul date -d "@$ts" '+%Y-%m-%d %H:%M:%S KST'
+}
 
-# 반환: "<summary_count> <send_now>"
+# 반환: "<summary_count> <send_now> <last_epoch>"
 cooldown_status() {                                                 # 쿨다운 상태 파일 기반 중복 알림 방지
   local key="$1" now last count tmp lock_file fd
   now="$(now_epoch)"
@@ -39,7 +47,7 @@ cooldown_status() {                                                 # 쿨다운 
     printf "%s\t%s\t%s\n" "$key" "$now" 0 >> "$tmp"
     mv "$tmp" "$COOLDOWN_STATE"
     exec {fd}>&-
-    printf "%s %s\n" "${count:-0}" 1
+    printf "%s %s %s\n" "${count:-0}" 1 "$last"
     return 0
   fi
 
@@ -49,7 +57,7 @@ cooldown_status() {                                                 # 쿨다운 
   printf "%s\t%s\t%s\n" "$key" "$last" "$count" >> "$tmp"
   mv "$tmp" "$COOLDOWN_STATE"
   exec {fd}>&-
-  printf "0 0\n"
+  printf "0 0 %s\n" "$last"
 }
 
 send_discord() {                                                     # 디스코드 웹훅으로 메시지 전송
@@ -74,14 +82,14 @@ check() {                                                            # URL에 cu
 for item in "${URLS[@]}"; do                                          # 각 대상에 대해 헬스체크 수행
   IFS='|' read -r name url <<< "$item"
   if ! check "$url"; then                                             # 헬스체크 실패 시 디스코드 알림 전송
-    read -r summary_count send_now <<< "$(cooldown_status "health|${name}")"
+    read -r summary_count send_now last_epoch <<< "$(cooldown_status "health|${name}")"
     if (( summary_count > 0 )); then
-      send_discord "헬스체크 요약: ${name}" \
-        "시간: $(now_kst)\n요약:\n- 마지막 알림 이후 추가 ${summary_count}회 실패"
+      send_discord "[HEALTH] 헬스체크 요약: ${name}" \
+        "====================\nTYPE: HEALTH SUMMARY\n====================\n시간: $(now_kst)\n대상: ${name}\n요약:\n- 마지막 알림: $(fmt_kst_from_epoch "$last_epoch")\n- 마지막 알림 이후 추가 ${summary_count}회 실패"
     fi
     if (( send_now == 1 )); then
-      send_discord "헬스체크 실패: ${name}" \
-        "시간: $(now_kst)\n대상: ${name}\nURL: ${url}\n조치: 해당 프로세스 상태 확인 후 재기동/롤백 판단"
+      send_discord "[HEALTH] 헬스체크 실패: ${name}" \
+        "====================\nTYPE: HEALTH EVENT\n====================\n시간: $(now_kst)\n대상: ${name}\nURL: ${url}\n조치: 해당 프로세스 상태 확인 후 재기동/롤백 판단"
     fi
   fi
 done

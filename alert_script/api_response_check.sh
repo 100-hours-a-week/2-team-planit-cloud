@@ -17,8 +17,16 @@ APIS=(                                                                 # "이름
 
 now_kst() { TZ=Asia/Seoul date '+%Y-%m-%d %H:%M:%S KST'; }            # 현재 시간을 KST 문자열로 반환
 now_epoch() { date +%s; }
+fmt_kst_from_epoch() {
+  local ts="$1"
+  if [[ -z "${ts:-}" || "$ts" == "0" ]]; then
+    echo "없음"
+    return 0
+  fi
+  TZ=Asia/Seoul date -d "@$ts" '+%Y-%m-%d %H:%M:%S KST'
+}
 
-# 반환: "<summary_count> <send_now>"
+# 반환: "<summary_count> <send_now> <last_epoch>"
 cooldown_status() {                                                   # 쿨다운 상태 파일 기반 중복 알림 방지
   local key="$1" now last count tmp lock_file fd
   now="$(now_epoch)"
@@ -41,7 +49,7 @@ cooldown_status() {                                                   # 쿨다�
     printf "%s\t%s\t%s\n" "$key" "$now" 0 >> "$tmp"
     mv "$tmp" "$COOLDOWN_STATE"
     exec {fd}>&-
-    printf "%s %s\n" "${count:-0}" 1
+    printf "%s %s %s\n" "${count:-0}" 1 "$last"
     return 0
   fi
 
@@ -51,7 +59,7 @@ cooldown_status() {                                                   # 쿨다�
   printf "%s\t%s\t%s\n" "$key" "$last" "$count" >> "$tmp"
   mv "$tmp" "$COOLDOWN_STATE"
   exec {fd}>&-
-  printf "0 0\n"
+  printf "0 0 %s\n" "$last"
 }
 
 json_escape() {                                                       # 디스코드 JSON 전송을 위한 문자열 escape
@@ -137,16 +145,26 @@ check_api() {                                                         # API 1개
 
   # 3회 모두 실패. 알림 전송 로직 실행
   if ! is_allowed_code "$http_code" "$allowed_codes"; then            # 상태코드 임계치 위반
-    read -r summary_count send_now <<< "$(cooldown_status "api|${name}|status")"
+    read -r summary_count send_now last_epoch <<< "$(cooldown_status "api|${name}|status")"
     if (( summary_count > 0 )); then
-      send_discord "API 체크 요약(상태코드): ${name}" \
-"시간: $(now_kst)
+      send_discord "[API] API 체크 요약(상태코드): ${name}" \
+"====================
+TYPE: API SUMMARY
+KIND: STATUS
+====================
+시간: $(now_kst)
+대상: ${name}
 요약:
+- 마지막 알림: $(fmt_kst_from_epoch "$last_epoch")
 - 마지막 알림 이후 추가 ${summary_count}회 실패"
     fi
     if (( send_now == 1 )); then
-      send_discord "API 체크 실패(상태코드): ${name}" \
-"시간: $(now_kst)
+      send_discord "[API] API 체크 실패(상태코드): ${name}" \
+"====================
+TYPE: API EVENT
+KIND: STATUS
+====================
+시간: $(now_kst)
 대상: ${name}
 METHOD: ${method}
 URL: ${url}
@@ -157,16 +175,26 @@ Latency: ${latency_ms}ms (limit ${max_ms}ms)"
   fi
 
   if [[ "$latency_ms" -gt "$max_ms" ]]; then                          # 지연시간 임계치 위반
-    read -r summary_count send_now <<< "$(cooldown_status "api|${name}|latency")"
+    read -r summary_count send_now last_epoch <<< "$(cooldown_status "api|${name}|latency")"
     if (( summary_count > 0 )); then
-      send_discord "API 체크 요약(지연): ${name}" \
-"시간: $(now_kst)
+      send_discord "[API] API 체크 요약(지연): ${name}" \
+"====================
+TYPE: API SUMMARY
+KIND: LATENCY
+====================
+시간: $(now_kst)
+대상: ${name}
 요약:
+- 마지막 알림: $(fmt_kst_from_epoch "$last_epoch")
 - 마지막 알림 이후 추가 ${summary_count}회 실패"
     fi
     if (( send_now == 1 )); then
-      send_discord "API 체크 실패(지연): ${name}" \
-"시간: $(now_kst)
+      send_discord "[API] API 체크 실패(지연): ${name}" \
+"====================
+TYPE: API EVENT
+KIND: LATENCY
+====================
+시간: $(now_kst)
 대상: ${name}
 METHOD: ${method}
 URL: ${url}
