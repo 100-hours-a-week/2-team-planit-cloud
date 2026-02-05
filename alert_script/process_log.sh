@@ -24,10 +24,12 @@ RULES=(                                                               # "키<SEP
   "timeout${SEP}timed out${SEP}WARN${SEP}타임아웃/지연 의심"
   "boot_fail${SEP}APPLICATION FAILED TO START${SEP}CRITICAL${SEP}기동 실패"
   "upstream${SEP}upstream prematurely closed${SEP}ERROR${SEP}업스트림(백엔드) 문제 의심"
+  "error_text${SEP}(^|[^[:alnum:]_])ERROR([^[:alnum:]_]|$)${SEP}ERROR${SEP}에러 로그 문자열 감지"
 
   # --- Caddy Access ---
-  "web_5xx${SEP}(\"status\":5[0-9]{2}|\\s5[0-9]{2}\\s)${SEP}CRITICAL${SEP}웹 서버 5xx 응답 발생(서버 오류)"
-  "web_429${SEP}(\"status\":429|\\s429\\s)${SEP}WARN${SEP}429 발생(과도 요청/레이트리밋) - 트래픽 스파이크 가능"
+  "web_5xx${SEP}(\"status\"\\s*:\\s*5[0-9]{2}|\\s5[0-9]{2}\\s)${SEP}CRITICAL${SEP}웹 서버 5xx 응답 발생(서버 오류)"
+  "web_4xx${SEP}(\"status\"\\s*:\\s*4[0-9]{2}|\\s4[0-9]{2}\\s)${SEP}WARN${SEP}웹 서버 4xx 응답 발생(클라이언트 오류)"
+  "web_429${SEP}(\"status\"\\s*:\\s*429|\\s429\\s)${SEP}WARN${SEP}429 발생(과도 요청/레이트리밋) - 트래픽 스파이크 가능"
   "web_client_abort${SEP}(\\s499\\s|client.*(canceled|closed)|context canceled)${SEP}WARN${SEP}클라이언트 요청 중단 증가(타임아웃/네트워크/프론트 이탈)"
   "web_static_404${SEP}(\\s404\\s.*\\.(js|css|png|jpg|jpeg|svg|webp|ico)(\\?|\\s|$)|\"status\":404.*\\.(js|css|png|jpg|jpeg|svg|webp|ico))${SEP}WARN${SEP}정적 리소스 404(배포 누락/경로 문제) 의심"
 )
