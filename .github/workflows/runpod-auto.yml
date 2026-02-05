@@ -1,0 +1,420 @@
+name: RunPod Auto Start/Recover (List-first)
+
+on:
+  schedule:
+    # 12:55 KST = 03:55 UTC
+    - cron: "55 3 * * *"
+    # 02:00 KST = 17:00 UTC
+    - cron: "0 17 * * *"
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "RunPod action to run (start/stop)"
+        required: true
+        type: choice
+        options:
+          - start
+          - stop
+
+jobs:
+  runpod-power:
+    runs-on: ubuntu-latest
+    env:
+      # RunPod
+      RUNPOD_API_KEY: ${{ secrets.RUNPOD_API_KEY }}
+      # AI server (EC2)
+      EC2_HOST: ${{ secrets.EC2_HOST }}
+      EC2_USERNAME: ${{ secrets.EC2_USERNAME }}
+      EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
+      # Discord
+      DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+
+    steps:
+      - name: Decide action (schedule or manual)
+        id: decide
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "action=${{ inputs.action }}" >> "$GITHUB_OUTPUT"
+            echo "mode=manual" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          SCHEDULE="${{ github.event.schedule }}"
+          if [ "$SCHEDULE" = "55 3 * * *" ]; then
+            echo "action=start" >> "$GITHUB_OUTPUT"
+            echo "mode=schedule" >> "$GITHUB_OUTPUT"
+          elif [ "$SCHEDULE" = "0 17 * * *" ]; then
+            echo "action=stop" >> "$GITHUB_OUTPUT"
+            echo "mode=schedule" >> "$GITHUB_OUTPUT"
+          else
+            echo "action=none" >> "$GITHUB_OUTPUT"
+            echo "mode=unknown" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install jq
+        if: steps.decide.outputs.action != 'none'
+        run: |
+          # jq: JSON 응답에서 pod id, IP 등을 추출할 때 사용
+          sudo apt-get update -y >/dev/null
+          sudo apt-get install -y jq >/dev/null
+
+      - name: List pods and select first
+        if: steps.decide.outputs.action != 'none'
+        id: list_pods
+        shell: bash
+        run: |
+          set -euo pipefail
+          # RunPod API로 현재 pod 목록 조회
+          pods="$(curl -fsS --max-time 25 \
+            --request GET \
+            --url "https://rest.runpod.io/v1/pods" \
+            --header "Authorization: Bearer ${RUNPOD_API_KEY}")"
+          # 목록의 첫 번째 pod id를 사용 (1개만 운영하는 전제)
+          pod_id="$(echo "$pods" | jq -r '.[0].id // .[0].pod.id // empty')"
+          count="$(echo "$pods" | jq -r 'length')"
+
+          echo "count=$count" >> "$GITHUB_OUTPUT"
+          # pod 유무 플래그 출력
+          if [ -n "$pod_id" ] && [ "$pod_id" != "null" ]; then
+            echo "pod_id=$pod_id" >> "$GITHUB_OUTPUT"
+            echo "has_pod=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "pod_id=" >> "$GITHUB_OUTPUT"
+            echo "has_pod=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # =========================
+      # STOP: list -> stop first pod
+      # =========================
+      - name: RunPod STOP (retry max 10)
+        if: steps.decide.outputs.action == 'stop'
+        id: stop
+        shell: bash
+        run: |
+          set -euo pipefail
+          # 목록에서 선택된 pod를 중지
+          POD_ID="${{ steps.list_pods.outputs.pod_id }}"
+          if [ -z "${POD_ID:-}" ]; then
+            echo "No pods found to stop."
+            exit 0
+          fi
+
+          URL="https://rest.runpod.io/v1/pods/${POD_ID}/stop"
+          for i in $(seq 1 10); do
+            echo "Stop attempt $i/10..."
+            if curl -fsS --max-time 25 -X POST \
+              --url "$URL" \
+              --header "Authorization: Bearer ${RUNPOD_API_KEY}"
+            then
+              echo "STOP success"
+              exit 0
+            fi
+            sleep $((i*5))
+          done
+          echo "STOP failed"
+          exit 1
+
+      # =========================
+      # START: try existing -> on failure delete -> create -> start
+      # =========================
+      - name: Try START existing pod (retry max 5)
+        if: steps.decide.outputs.action == 'start' && steps.list_pods.outputs.has_pod == 'true'
+        id: start_existing
+        shell: bash
+        run: |
+          set -euo pipefail
+          # 목록에서 선택된 pod를 시작 시도
+          POD_ID="${{ steps.list_pods.outputs.pod_id }}"
+          URL="https://rest.runpod.io/v1/pods/${POD_ID}/start"
+
+          ok=0
+          for i in $(seq 1 5); do
+            echo "Start existing attempt $i/5..."
+            if curl -fsS --max-time 25 -X POST \
+              --url "$URL" \
+              --header "Authorization: Bearer ${RUNPOD_API_KEY}"
+            then
+              ok=1
+              break
+            fi
+            sleep $((i*5))
+          done
+
+          echo "ok=$ok" >> "$GITHUB_OUTPUT"
+          if [ "$ok" -ne 1 ]; then
+            echo "Start existing pod failed after retries."
+            exit 0
+          fi
+
+      - name: Decide pod id to use (existing or recover)
+        if: steps.decide.outputs.action == 'start'
+        id: pod_select
+        shell: bash
+        run: |
+          set -euo pipefail
+          # 기존 pod start 성공이면 그대로 사용, 아니면 복구 플로우로 전환
+          if [ "${{ steps.list_pods.outputs.has_pod }}" = "true" ] && [ "${{ steps.start_existing.outputs.ok }}" = "1" ]; then
+            echo "pod_id=${{ steps.list_pods.outputs.pod_id }}" >> "$GITHUB_OUTPUT"
+            echo "recovered=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "pod_id=" >> "$GITHUB_OUTPUT"
+          echo "recovered=true" >> "$GITHUB_OUTPUT"
+
+      - name: Delete old pod (best-effort) before recovery
+        if: steps.decide.outputs.action == 'start' && steps.pod_select.outputs.recovered == 'true' && steps.list_pods.outputs.has_pod == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          # start 실패 시 기존 pod를 삭제 (best-effort)
+          POD_ID="${{ steps.list_pods.outputs.pod_id }}"
+          curl -fsS --max-time 25 -X DELETE \
+            --url "https://rest.runpod.io/v1/pods/${POD_ID}" \
+            --header "Authorization: Bearer ${RUNPOD_API_KEY}" \
+            || echo "old pod delete failed (ignore)"
+
+      - name: Create new pod (recovery, explicit config)
+        if: steps.decide.outputs.action == 'start' && steps.pod_select.outputs.recovered == 'true'
+        id: create_pod
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          CREATE_URL="https://rest.runpod.io/v1/pods"
+
+          body="$(jq -n '{
+            cloudType: "SECURE",
+            computeType: "GPU",
+            gpuCount: 1,
+            gpuTypeIds: ["NVIDIA RTX A5000"],
+            interruptible: false,
+
+            imageName: "vllm/vllm-openai:gptoss",
+
+            dockerStartCmd: [
+              "--model","openai/gpt-oss-20b",
+              "--max-model-len","16384",
+              "--port","8000"
+            ],
+
+            env: {
+              VLLM_ATTENTION_BACKEND: "TRITON_ATTN_VLLM_V1",
+              HF_HUB_DISABLE_XET: "1",
+              HF_HUB_ENABLE_HF_TRANSFER: "1"
+            },
+
+            containerDiskInGb: 10,
+            volumeInGb: 50,
+            volumeMountPath: "/root/.cache/huggingface",
+
+            ports: ["8000/http", "22/tcp"]
+          }')"
+
+          resp="$(curl -fsS --max-time 30 -X POST \
+            --url "$CREATE_URL" \
+            --header "Authorization: Bearer ${RUNPOD_API_KEY}" \
+            --header "Content-Type: application/json" \
+            --data "$body")"
+
+          echo "$resp" | jq .
+
+          new_id="$(echo "$resp" | jq -r '.id // .podId // .pod.id // empty')"
+          if [ -z "$new_id" ] || [ "$new_id" = "null" ]; then
+            echo "Failed to parse new pod id from response."
+            exit 1
+          fi
+
+          echo "new_pod_id=$new_id" >> "$GITHUB_OUTPUT"
+
+      - name: Start new pod (recovery)
+        if: steps.decide.outputs.action == 'start' && steps.pod_select.outputs.recovered == 'true'
+        id: start_new
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          POD_ID="${{ steps.create_pod.outputs.new_pod_id }}"
+          if [ -z "${POD_ID:-}" ]; then
+            echo "Missing new_pod_id (create_pod output)."
+            exit 1
+          fi
+
+          URL="https://rest.runpod.io/v1/pods/${POD_ID}/start"
+
+          for i in $(seq 1 10); do
+            echo "Start new attempt $i/10..."
+            if curl -fsS --max-time 25 -X POST \
+              --url "$URL" \
+              --header "Authorization: Bearer ${RUNPOD_API_KEY}"
+            then
+              echo "new pod start request OK"
+              exit 0
+            fi
+            sleep $((i*5))
+          done
+
+          echo "Failed to start new pod."
+          exit 1
+
+      - name: Set selected pod id (final)
+        if: steps.decide.outputs.action == 'start'
+        id: final_pod
+        shell: bash
+        run: |
+          set -euo pipefail
+          # 최종적으로 사용할 pod id 확정
+          if [ "${{ steps.pod_select.outputs.recovered }}" = "false" ]; then
+            echo "pod_id=${{ steps.list_pods.outputs.pod_id }}" >> "$GITHUB_OUTPUT"
+            echo "recovered=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "pod_id=${{ steps.create_pod.outputs.new_pod_id }}" >> "$GITHUB_OUTPUT"
+            echo "recovered=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Fetch vLLM base URL via proxy (poll up to 30 min)
+        if: steps.decide.outputs.action == 'start'
+        id: endpoint
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          POD="${{ steps.final_pod.outputs.pod_id }}"
+          BASE="https://${POD}-8000.proxy.runpod.net"
+          V1="${BASE}"
+
+          # 30분 = 1800초 = 180회 * 10초
+          for i in $(seq 1 180); do
+            echo "Polling vLLM proxy $i/180..."
+            code="$(curl -sS --max-time 20 -o /dev/null -w "%{http_code}" \
+              "${BASE}/health" || true)"
+
+            if [ "$code" = "200" ] || [ "$code" = "401" ]; then
+              echo "vllm_base_url=${V1}" >> "$GITHUB_OUTPUT"
+              echo "Resolved base url: ${V1}"
+              exit 0
+            fi
+
+            sleep 10
+          done
+
+          echo "Failed to resolve vLLM endpoint via proxy within 30 minutes."
+          exit 1
+
+      - name: Get GitHub Actions IP
+        if: steps.decide.outputs.action == 'start'
+        id: get-ip
+        uses: haythem/public-ip@v1.3
+
+      - name: Add IP to SG
+        if: steps.decide.outputs.action == 'start'
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: ap-northeast-2
+        run: |
+          aws ec2 authorize-security-group-ingress \
+            --group-id ${{ secrets.SECURITY_GROUP_ID }} \
+            --protocol tcp \
+            --port 22 \
+            --cidr ${{ steps.get-ip.outputs.ipv4 }}/32 \
+            || echo "IP may already be in security group"
+          sleep 10
+
+      - name: Update AI .env VLLM_BASE_URL only and restart AI server
+        if: steps.decide.outputs.action == 'start'
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          NEW_VLLM_BASE_URL: ${{ steps.endpoint.outputs.vllm_base_url }}
+        with:
+          host: ${{ env.EC2_HOST }}
+          username: ${{ env.EC2_USERNAME }}
+          key: ${{ env.EC2_SSH_KEY }}
+          envs: NEW_VLLM_BASE_URL
+          script: |
+            set -e
+            trap 'echo "FAILED at line $LINENO"; exit 1' ERR
+
+            BASE="/var/www/planit/ai"
+            APP_DIR="$BASE/app"
+            ENV_FILE="$APP_DIR/.env"
+            LOG="$BASE/app.log"
+
+            test -d "$APP_DIR"
+            test -f "$ENV_FILE"
+
+            # VLLM_BASE_URL 한 줄만 교체 (기존 따옴표 스타일 유지)
+            if grep -qE '^VLLM_BASE_URL="' "$ENV_FILE"; then
+              sed -i "s|^VLLM_BASE_URL=\".*\"|VLLM_BASE_URL=\"${NEW_VLLM_BASE_URL}\"|" "$ENV_FILE"
+            elif grep -qE "^VLLM_BASE_URL='" "$ENV_FILE"; then
+              sed -i "s|^VLLM_BASE_URL='.*'|VLLM_BASE_URL='${NEW_VLLM_BASE_URL}'|" "$ENV_FILE"
+            elif grep -qE '^VLLM_BASE_URL=' "$ENV_FILE"; then
+              sed -i "s|^VLLM_BASE_URL=.*|VLLM_BASE_URL=\"${NEW_VLLM_BASE_URL}\"|" "$ENV_FILE"
+            else
+              echo "VLLM_BASE_URL=\"${NEW_VLLM_BASE_URL}\"" >> "$ENV_FILE"
+            fi
+            chmod 600 "$ENV_FILE"
+
+            # AI 서버 재시작
+            sudo fuser -k 8000/tcp || true
+            echo "STEP: start app"
+            cd "$APP_DIR"
+            nohup ./.venv/bin/python ./main.py > "$LOG" 2>&1 &
+
+            # 헬스체크
+            for retry_count in {1..30}; do
+              code=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/health || true)
+              if [ "$code" -eq 200 ] || [ "$code" -eq 401 ]; then
+                echo "AI server is up (HTTP $code)"
+                exit 0
+              fi
+              sleep 10
+            done
+
+            echo "AI server failed to start."
+            tail -n 200 "$LOG" || true
+            exit 1
+
+      - name: Remove IP from Security Group
+        if: always() && steps.decide.outputs.action == 'start'
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: ap-northeast-2
+        run: |
+          aws ec2 revoke-security-group-ingress \
+            --group-id ${{ secrets.SECURITY_GROUP_ID }} \
+            --protocol tcp \
+            --port 22 \
+            --cidr ${{ steps.get-ip.outputs.ipv4 }}/32 \
+            || echo "Failed to remove IP or rule not found"
+
+
+      - name: Notify Discord on success
+        if: success() && steps.decide.outputs.action != 'none'
+        run: |
+          set -euo pipefail
+          ACTION="${{ steps.decide.outputs.action }}"
+          MODE="${{ steps.decide.outputs.mode }}"
+          RUN_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          POD="${{ steps.final_pod.outputs.pod_id }}"
+          BASE="${{ steps.endpoint.outputs.vllm_base_url }}"
+          REC="${{ steps.final_pod.outputs.recovered }}"
+
+          curl -fsS -H "Content-Type: application/json" -X POST \
+            -d "{\"content\":\"RunPod ${ACTION} 성공 (${MODE})\\nRecovered=${REC}\\nPod=${POD}\\nVLLM_BASE_URL=${BASE}\\n${RUN_URL}\"}" \
+            "${DISCORD_WEBHOOK_URL}"
+
+      - name: Notify Discord on failure
+        if: failure()
+        run: |
+          set -euo pipefail
+          ACTION="${{ steps.decide.outputs.action }}"
+          MODE="${{ steps.decide.outputs.mode }}"
+          RUN_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+          curl -fsS -H "Content-Type: application/json" -X POST \
+            -d "{\"content\":\"RunPod ${ACTION} 실패 (${MODE})\\n${RUN_URL}\"}" \
+            "${DISCORD_WEBHOOK_URL}"
