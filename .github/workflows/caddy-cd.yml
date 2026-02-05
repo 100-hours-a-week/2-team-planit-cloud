@@ -31,8 +31,10 @@ jobs:
       - name: Build Caddy with xcaddy
         run: |
           go install github.com/caddyserver/xcaddy/cmd/xcaddy@latest
-          # Runner /tmp can be noexec; use workspace so built binary is executable
           export TMPDIR="$RUNNER_TEMP"
+          # EC2가 ARM(Graviton)이면 arm64, x86(t3 등)이면 amd64
+          export GOOS=linux
+          export GOARCH=arm64
           xcaddy build \
             --output ./caddy-bin \
             --with github.com/xcaddyplugins/caddy-trusted-cloudfront \
