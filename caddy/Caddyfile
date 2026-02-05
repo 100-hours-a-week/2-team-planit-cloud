@@ -38,9 +38,9 @@ planit-ai.store {
 			# 30초 안에 10회 초과 시 429 + Retry-After (30초 제한)
 			rate_limit {
 				zone api {
-					key {remote_host}
-					events 10
-					window 30s
+					key {remote_ip}
+					events 120
+					window 60s
 				}
 			}
 			reverse_proxy localhost:8080
