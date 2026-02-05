@@ -68,7 +68,7 @@ jobs:
           username: ${{ env.EC2_USERNAME }}
           key: ${{ env.EC2_SSH_KEY }}
           source: "deploy/*"
-          target: "/tmp/deploy"
+          target: "/tmp"
 
       # 플러그인 포함 바이너리 교체 후 Caddyfile 적용 및 재시작
       - name: Install Caddy binary and Caddyfile, restart Caddy
