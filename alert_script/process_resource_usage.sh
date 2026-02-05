@@ -5,6 +5,8 @@ set -euo pipefail
 
 WEBHOOK_URL="${DISCORD_WEBHOOK_URL:-}"     # 디스코드 웹훅 URL
 HOST_TAG="${HOST_TAG:-planit-prod}"        # 알림에 붙일 서버/환경 태그
+COOLDOWN_SECONDS="${COOLDOWN_SECONDS:-300}" # 동일 종류 중복 알림 쿨다운(기본 5분)
+COOLDOWN_STATE="${COOLDOWN_STATE:-/tmp/planit_alert_cooldown_${0##*/}.tsv}"
 
 TARGETS=(                                 # "이름|포트" 감시 대상 목록
   "backend|8080"
@@ -16,6 +18,43 @@ CPU_THRESHOLD="${CPU_THRESHOLD:-90}"       # CPU 사용률 임계치(%)
 RSS_THRESHOLD_MB="${RSS_THRESHOLD_MB:-1500}" # 메모리(RSS) 임계치(MB)
 
 now_kst() { TZ=Asia/Seoul date '+%Y-%m-%d %H:%M:%S KST'; } # KST 시간 문자열 생성
+now_epoch() { date +%s; }
+
+# 반환: "<summary_count> <send_now>"
+cooldown_status() {                        # 쿨다운 상태 파일 기반 중복 알림 방지
+  local key="$1" now last count tmp lock_file fd
+  now="$(now_epoch)"
+  last=0
+  count=0
+  [[ -f "$COOLDOWN_STATE" ]] || : > "$COOLDOWN_STATE"
+  lock_file="${COOLDOWN_STATE}.lock"
+  exec {fd}>"$lock_file"
+  flock -x "$fd"
+  if read -r last count < <(awk -F'\t' -v k="$key" '$1==k {print $2, $3}' "$COOLDOWN_STATE" | tail -n1); then
+    : # use parsed last/count
+  else
+    last=0
+    count=0
+  fi
+
+  if (( now - last >= COOLDOWN_SECONDS )); then
+    tmp="$(mktemp)"
+    awk -F'\t' -v k="$key" 'BEGIN{OFS="\t"} $1!=k {print $0}' "$COOLDOWN_STATE" > "$tmp"
+    printf "%s\t%s\t%s\n" "$key" "$now" 0 >> "$tmp"
+    mv "$tmp" "$COOLDOWN_STATE"
+    exec {fd}>&-
+    printf "%s %s\n" "${count:-0}" 1
+    return 0
+  fi
+
+  count=$((count + 1))
+  tmp="$(mktemp)"
+  awk -F'\t' -v k="$key" 'BEGIN{OFS="\t"} $1!=k {print $0}' "$COOLDOWN_STATE" > "$tmp"
+  printf "%s\t%s\t%s\n" "$key" "$last" "$count" >> "$tmp"
+  mv "$tmp" "$COOLDOWN_STATE"
+  exec {fd}>&-
+  printf "0 0\n"
+}
 
 send_discord() {                           # 디스코드 웹훅으로 메시지 전송
   local title="$1"
@@ -105,7 +144,13 @@ if (( ${#alerts[@]} > 0 )); then           # 임계치 초과가 있으면 디�
   if (( ${#conn_lines[@]} > 0 )); then
     msg="${msg}\n\n포트 연결 수:\n$(printf "%s\n" "${conn_lines[@]}" | awk '!seen[$0]++' | sed 's/^/- /')"
   fi
-  send_discord "성능 이상(임계치 초과) 감지" "$msg"
+  read -r summary_count send_now <<< "$(cooldown_status "resource|summary")"
+  if (( summary_count > 0 )); then
+    send_discord "성능 이상 요약" "시간: $(now_kst)\n요약:\n- 마지막 알림 이후 추가 ${summary_count}회 발생"
+  fi
+  if (( send_now == 1 )); then
+    send_discord "성능 이상(임계치 초과) 감지" "$msg"
+  fi
 fi
 
 exit 0                                     # 정상 종료

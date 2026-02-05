@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
-# 여러 로그 파일을 스트리밍으로 감시하고 패턴 매칭 시 디스코드로 알림 전송(쿨다운 없음)
+# 여러 로그 파일을 스트리밍으로 감시하고 패턴 매칭 시 디스코드로 알림 전송(쿨다운/요약 포함)
 
 set -euo pipefail  # 에러/미정의 변수/파이프 실패 시 즉시 종료
 
 WEBHOOK_URL="${DISCORD_WEBHOOK_URL:?DISCORD_WEBHOOK_URL is required}" # 디스코드 웹훅 URL(필수)
 HOST_TAG="${HOST_TAG:-planit-prod}"                                  # 알림 태그(기본값 planit-prod)
+COOLDOWN_SECONDS="${COOLDOWN_SECONDS:-300}"                         # 동일 룰/컴포넌트 중복 알림 쿨다운(기본 5분)
+COOLDOWN_STATE="${COOLDOWN_STATE:-/tmp/planit_alert_cooldown_${0##*/}.tsv}"
 
 LOG_FILES=(                                                           # "로그경로|컴포넌트명" 감시 대상 목록
   "/var/www/planit/backend/app.log|backend"
@@ -31,6 +33,7 @@ RULES=(                                                               # "키<SEP
 )
 
 now_kst(){ TZ=Asia/Seoul date '+%Y-%m-%d %H:%M:%S KST'; }
+now_epoch(){ date +%s; }
 
 json_escape() {
   local s="$1"
@@ -47,6 +50,43 @@ send_discord() {
     -X POST \
     -d "{\"content\":\"${content}\"}" \
     "$WEBHOOK_URL" >/dev/null || true
+}
+
+# 동일 룰/컴포넌트 기준으로 요약+쿨다운 동작
+# 반환: "<summary_count> <send_now>"
+cooldown_status() {
+  local key="$1" now last count tmp lock_file fd
+  now="$(now_epoch)"
+  last=0
+  count=0
+  [[ -f "$COOLDOWN_STATE" ]] || : > "$COOLDOWN_STATE"
+  lock_file="${COOLDOWN_STATE}.lock"
+  exec {fd}>"$lock_file"
+  flock -x "$fd"
+  if read -r last count < <(awk -F'\t' -v k="$key" '$1==k {print $2, $3}' "$COOLDOWN_STATE" | tail -n1); then
+    : # use parsed last/count
+  else
+    last=0
+    count=0
+  fi
+
+  if (( now - last >= COOLDOWN_SECONDS )); then
+    tmp="$(mktemp)"
+    awk -F'\t' -v k="$key" 'BEGIN{OFS="\t"} $1!=k {print $0}' "$COOLDOWN_STATE" > "$tmp"
+    printf "%s\t%s\t%s\n" "$key" "$now" 0 >> "$tmp"
+    mv "$tmp" "$COOLDOWN_STATE"
+    exec {fd}>&-
+    printf "%s %s\n" "${count:-0}" 1
+    return 0
+  fi
+
+  count=$((count + 1))
+  tmp="$(mktemp)"
+  awk -F'\t' -v k="$key" 'BEGIN{OFS="\t"} $1!=k {print $0}' "$COOLDOWN_STATE" > "$tmp"
+  printf "%s\t%s\t%s\n" "$key" "$last" "$count" >> "$tmp"
+  mv "$tmp" "$COOLDOWN_STATE"
+  exec {fd}>&-
+  printf "0 0\n"
 }
 
 # tail -v 헤더(==> file <==)로 현재 파일을 추적해서 컴포넌트를 매핑
@@ -66,8 +106,21 @@ while IFS= read -r line; do
   for rule in "${RULES[@]}"; do
     IFS=$'\x1f' read -r key regex sev hint <<< "$rule"
     if echo "$line" | grep -Eiq "$regex"; then
+      cooldown_key="${current_comp}|${key}"
+      read -r summary_count send_now <<< "$(cooldown_status "$cooldown_key")"
+      if (( summary_count > 0 )); then
+        send_discord "로그 요약(${sev}): ${current_comp}/${key}" \
+"시간: $(now_kst)
+요약:
+- 마지막 알림 이후 추가 ${summary_count}회 발생"
+      fi
+      if (( send_now == 0 )); then
+        continue
+      fi
       send_discord "로그 감지(${sev}): ${current_comp}/${key}" \
 "시간: $(now_kst)
+컴포넌트: ${current_comp}
+규칙: ${key}
 힌트: ${hint}
 파일: ${current_file}
 

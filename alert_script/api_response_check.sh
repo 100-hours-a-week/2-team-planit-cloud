@@ -6,6 +6,8 @@ set -euo pipefail  # 에러/미정의 변수/파이프 실패 시 즉시 종료
 WEBHOOK_URL="${DISCORD_WEBHOOK_URL:?DISCORD_WEBHOOK_URL is required}" # 디스코드 웹훅 URL(필수)
 HOST_TAG="${HOST_TAG:-planit-prod}"                                   # 알림 태그(기본값 planit-prod)
 EC2_HOST="${EC2_PUBLIC_IP:-127.0.0.1}"                                # EC2 public IP(기본값 로컬)
+COOLDOWN_SECONDS="${COOLDOWN_SECONDS:-300}"                          # 동일 대상 중복 알림 쿨다운(기본 5분)
+COOLDOWN_STATE="${COOLDOWN_STATE:-/tmp/planit_alert_cooldown_${0##*/}.tsv}"
 
 APIS=(                                                                 # "이름|METHOD|URL|허용코드(콤마)|지연임계치(ms)|추가헤더(선택; 세미콜론 구분)"
   "get_backend|GET|http://${EC2_HOST}:8080/api/health|200|700|"
@@ -14,6 +16,43 @@ APIS=(                                                                 # "이름
 )
 
 now_kst() { TZ=Asia/Seoul date '+%Y-%m-%d %H:%M:%S KST'; }            # 현재 시간을 KST 문자열로 반환
+now_epoch() { date +%s; }
+
+# 반환: "<summary_count> <send_now>"
+cooldown_status() {                                                   # 쿨다운 상태 파일 기반 중복 알림 방지
+  local key="$1" now last count tmp lock_file fd
+  now="$(now_epoch)"
+  last=0
+  count=0
+  [[ -f "$COOLDOWN_STATE" ]] || : > "$COOLDOWN_STATE"
+  lock_file="${COOLDOWN_STATE}.lock"
+  exec {fd}>"$lock_file"
+  flock -x "$fd"
+  if read -r last count < <(awk -F'\t' -v k="$key" '$1==k {print $2, $3}' "$COOLDOWN_STATE" | tail -n1); then
+    : # use parsed last/count
+  else
+    last=0
+    count=0
+  fi
+
+  if (( now - last >= COOLDOWN_SECONDS )); then
+    tmp="$(mktemp)"
+    awk -F'\t' -v k="$key" 'BEGIN{OFS="\t"} $1!=k {print $0}' "$COOLDOWN_STATE" > "$tmp"
+    printf "%s\t%s\t%s\n" "$key" "$now" 0 >> "$tmp"
+    mv "$tmp" "$COOLDOWN_STATE"
+    exec {fd}>&-
+    printf "%s %s\n" "${count:-0}" 1
+    return 0
+  fi
+
+  count=$((count + 1))
+  tmp="$(mktemp)"
+  awk -F'\t' -v k="$key" 'BEGIN{OFS="\t"} $1!=k {print $0}' "$COOLDOWN_STATE" > "$tmp"
+  printf "%s\t%s\t%s\n" "$key" "$last" "$count" >> "$tmp"
+  mv "$tmp" "$COOLDOWN_STATE"
+  exec {fd}>&-
+  printf "0 0\n"
+}
 
 json_escape() {                                                       # 디스코드 JSON 전송을 위한 문자열 escape
   local s="$1"
@@ -98,22 +137,42 @@ check_api() {                                                         # API 1개
 
   # 3회 모두 실패. 알림 전송 로직 실행
   if ! is_allowed_code "$http_code" "$allowed_codes"; then            # 상태코드 임계치 위반
-    send_discord "API 체크 실패(상태코드): ${name}" \
+    read -r summary_count send_now <<< "$(cooldown_status "api|${name}|status")"
+    if (( summary_count > 0 )); then
+      send_discord "API 체크 요약(상태코드): ${name}" \
 "시간: $(now_kst)
+요약:
+- 마지막 알림 이후 추가 ${summary_count}회 실패"
+    fi
+    if (( send_now == 1 )); then
+      send_discord "API 체크 실패(상태코드): ${name}" \
+"시간: $(now_kst)
+대상: ${name}
 METHOD: ${method}
 URL: ${url}
 HTTP: ${http_code}
 Latency: ${latency_ms}ms (limit ${max_ms}ms)"
+    fi
     return 1
   fi
 
   if [[ "$latency_ms" -gt "$max_ms" ]]; then                          # 지연시간 임계치 위반
-    send_discord "API 체크 실패(지연): ${name}" \
+    read -r summary_count send_now <<< "$(cooldown_status "api|${name}|latency")"
+    if (( summary_count > 0 )); then
+      send_discord "API 체크 요약(지연): ${name}" \
 "시간: $(now_kst)
+요약:
+- 마지막 알림 이후 추가 ${summary_count}회 실패"
+    fi
+    if (( send_now == 1 )); then
+      send_discord "API 체크 실패(지연): ${name}" \
+"시간: $(now_kst)
+대상: ${name}
 METHOD: ${method}
 URL: ${url}
 HTTP: ${http_code}
 Latency: ${latency_ms}ms (limit ${max_ms}ms)"
+    fi
     return 1
   fi
 
