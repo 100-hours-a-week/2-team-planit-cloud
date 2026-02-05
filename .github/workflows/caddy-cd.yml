@@ -34,11 +34,12 @@ jobs:
           # Runner /tmp can be noexec; use workspace so built binary is executable
           export TMPDIR="$RUNNER_TEMP"
           xcaddy build \
+            --output ./caddy-bin \
             --with github.com/xcaddyplugins/caddy-trusted-cloudfront \
             --with github.com/mholt/caddy-ratelimit
-          chmod +x caddy
+          chmod +x caddy-bin
           mkdir -p deploy
-          mv caddy deploy/caddy-bin
+          mv caddy-bin deploy/caddy-bin
           cp caddy/Caddyfile deploy/Caddyfile
 
       # SSH 허용을 위해 Actions runner IP를 SG에 임시 추가
