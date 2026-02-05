@@ -31,9 +31,12 @@ jobs:
       - name: Build Caddy with xcaddy
         run: |
           go install github.com/caddyserver/xcaddy/cmd/xcaddy@latest
+          # Runner /tmp can be noexec; use workspace so built binary is executable
+          export TMPDIR="$RUNNER_TEMP"
           xcaddy build \
             --with github.com/xcaddyplugins/caddy-trusted-cloudfront \
             --with github.com/mholt/caddy-ratelimit
+          chmod +x caddy
           mkdir -p deploy
           mv caddy deploy/caddy-bin
           cp caddy/Caddyfile deploy/Caddyfile
