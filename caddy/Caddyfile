@@ -1,0 +1,58 @@
+{
+	servers {
+		trusted_proxies cloudfront  # CloudFront 프록시 신뢰
+	}
+}
+
+planit-ai.store {
+	# 차단할 IP
+	@blocked {
+		remote_ip 211.244.225.166  # 26.02.03 HTTP Flood Attack
+	}
+	abort @blocked
+
+	# Set this path to your site's directory.
+	root * /usr/share/caddy/dist
+	
+	# 압축 전송 활성화 (성능 최적화)
+	encode zstd gzip
+
+	# access log 저장
+	log {
+		output file /var/log/caddy/access.log
+		format console
+	}
+
+	# /api/로 시작하는 요청은 백엔드 서버로 보냅니다.
+	handle /api/* {
+		# 화이트리스트
+		@whitelisted {
+			remote_ip 127.0.0.0/8
+		}
+		handle @whitelisted {
+			reverse_proxy localhost:8080
+		}
+
+		handle {
+			# 30초 안에 10회 초과 시 429 + Retry-After (30초 제한)
+			rate_limit {
+				zone api {
+					key {remote_host}
+					events 10
+					window 30s
+				}
+			}
+			reverse_proxy localhost:8080
+		}
+	}
+
+	# 그 외 모든 요청 처리 (정적 파일 및 SPA 대응)
+	handle {
+		# 요청한 파일이 없으면 index.html을 보여줌 (SPA 라우팅)
+		try_files {path} /index.html
+		
+		# 정적 파일 서버 활성화
+		file_server
+	}
+
+}
