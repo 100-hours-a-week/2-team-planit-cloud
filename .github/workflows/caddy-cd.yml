@@ -85,7 +85,25 @@ jobs:
             sudo mkdir -p /var/log/caddy
             sudo chown caddy:caddy /var/log/caddy
             sudo cp /tmp/deploy/Caddyfile /etc/caddy/Caddyfile
-            sudo systemctl start caddy
+            # 실패 시 자동 재시작
+            sudo mkdir -p /etc/systemd/system/caddy.service.d
+            echo -e '[Service]\nRestart=on-failure\nRestartSec=5' | sudo tee /etc/systemd/system/caddy.service.d/restart.conf > /dev/null
+            sudo systemctl daemon-reload
+            # 배포 직후 기동 재시도 (최대 3회)
+            for i in 1 2 3; do
+              sudo systemctl start caddy
+              sleep 3
+              if sudo systemctl is-active --quiet caddy; then
+                break
+              fi
+              echo "Caddy start attempt $i failed, retrying..."
+              if [ "$i" -eq 3 ]; then
+                echo "Caddy failed to start after 3 attempts"
+                sudo journalctl -u caddy -n 30 --no-pager
+                exit 1
+              fi
+            done
+            curl -sSf -o /dev/null -w "Caddy responding: %{http_code}\n" http://127.0.0.1:80
 
       # 보안을 위해 배포 후 SG에서 runner IP 제거
       - name: Remove IP from Security Group
