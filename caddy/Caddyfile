@@ -35,7 +35,7 @@ planit-ai.store {
 		}
 
 		handle {
-			# 30초 안에 10회 초과 시 429 + Retry-After (30초 제한)
+			# 60초 안에 120회 초과 시 429 + Retry-After (60초 제한)
 			rate_limit {
 				zone api {
 					key {header.CloudFront-Viewer-Address}{remote_ip}
