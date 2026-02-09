@@ -3,7 +3,7 @@
 
 set -euo pipefail
 
-WEBHOOK_URL="${DISCORD_WEBHOOK_URL:-}"     # 디스코드 웹훅 URL
+WEBHOOK_URL="${DISCORD_FAILURE_ALERT_WEBHOOK_URL}" # 디스코드 웹훅 URL(필수)
 HOST_TAG="${HOST_TAG:-planit-prod}"        # 알림에 붙일 서버/환경 태그
 COOLDOWN_SECONDS="${COOLDOWN_SECONDS:-300}" # 동일 종류 중복 알림 쿨다운(기본 5분)
 COOLDOWN_STATE="${COOLDOWN_STATE:-/tmp/planit_alert_cooldown_${0##*/}.tsv}"

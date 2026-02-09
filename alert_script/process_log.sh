@@ -3,7 +3,7 @@
 
 set -euo pipefail  # 에러/미정의 변수/파이프 실패 시 즉시 종료
 
-WEBHOOK_URL="${DISCORD_WEBHOOK_URL:?DISCORD_WEBHOOK_URL is required}" # 디스코드 웹훅 URL(필수)
+WEBHOOK_URL="${DISCORD_FAILURE_ALERT_WEBHOOK_URL}" # 디스코드 웹훅 URL(필수)
 HOST_TAG="${HOST_TAG:-planit-prod}"                                  # 알림 태그(기본값 planit-prod)
 COOLDOWN_SECONDS="${COOLDOWN_SECONDS:-300}"                         # 동일 룰/컴포넌트 중복 알림 쿨다운(기본 5분)
 COOLDOWN_STATE="${COOLDOWN_STATE:-/tmp/planit_alert_cooldown_${0##*/}.tsv}"
