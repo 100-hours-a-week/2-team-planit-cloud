@@ -2,10 +2,10 @@ name: RunPod Auto Start/Recover (List-first)
 
 on:
   schedule:
-    # 12:55 KST = 03:55 UTC
-    - cron: "55 3 * * *"
-    # 02:00 KST = 17:00 UTC
-    - cron: "0 17 * * *"
+    # 12:37 KST = 03:37 UTC (여유시간 23분)
+    - cron: "37 3 * * *"
+    # 01:46 KST = 16:46 UTC
+    - cron: "46 16 * * *"
   workflow_dispatch:
     inputs:
       action:
@@ -42,10 +42,10 @@ jobs:
           fi
 
           SCHEDULE="${{ github.event.schedule }}"
-          if [ "$SCHEDULE" = "55 3 * * *" ]; then
+          if [ "$SCHEDULE" = "37 3 * * *" ]; then
             echo "action=start" >> "$GITHUB_OUTPUT"
             echo "mode=schedule" >> "$GITHUB_OUTPUT"
-          elif [ "$SCHEDULE" = "0 17 * * *" ]; then
+          elif [ "$SCHEDULE" = "46 16 * * *" ]; then
             echo "action=stop" >> "$GITHUB_OUTPUT"
             echo "mode=schedule" >> "$GITHUB_OUTPUT"
           else
