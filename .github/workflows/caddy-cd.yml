@@ -28,9 +28,22 @@ jobs:
           go-version: '1.22'
           cache: true
 
+      # xcaddy 캐시
+      - name: Cache xcaddy
+        id: cache-xcaddy
+        uses: actions/cache@v4
+        with:
+          path: ~/go/bin
+          key: xcaddy-${{ runner.os }}-v1
+
+      # xcaddy 설치
+      - name: Install xcaddy
+        if: steps.cache-xcaddy.outputs.cache-hit != 'true'
+        run: go install github.com/caddyserver/xcaddy/cmd/xcaddy@latest
+
       - name: Build Caddy with xcaddy
         run: |
-          go install github.com/caddyserver/xcaddy/cmd/xcaddy@latest
+          export PATH="$HOME/go/bin:$PATH"
           export TMPDIR="$RUNNER_TEMP"
           # EC2가 ARM(Graviton)이면 arm64, x86(t3 등)이면 amd64
           export GOOS=linux
