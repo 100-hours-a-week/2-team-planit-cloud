@@ -34,19 +34,11 @@ planit-ai.store {
 			reverse_proxy localhost:8080
 		}
 
-		# CloudFront에서 오리진으로 어떤 헤더가 오는지 확인용
-		handle_path /api/debug-headers {
-			header X-Debug-CloudFront-Viewer-Address {request.header.CloudFront-Viewer-Address}
-			header X-Debug-X-Forwarded-For {request.header.X-Forwarded-For}
-			header X-Debug-Remote {remote}
-			respond "OK" 200
-		}
-
 		handle {
 			# 60초 안에 300회 초과 시 429 + Retry-After (60초 제한)
 			rate_limit {
 				zone api {
-					key {header.CloudFront-Viewer-Address}{header.X-Forwarded-For}{remote_ip}
+					key {client_ip}
 					events 300
 					window 60s
 				}
