@@ -27,11 +27,17 @@ RULES=(                                                               # "키<SEP
   "error_text${SEP}(^|[^[:alnum:]_])ERROR([^[:alnum:]_]|$)${SEP}ERROR${SEP}에러 로그 문자열 감지"
 
   # --- Caddy Access ---
-  "web_5xx${SEP}(\"status\"[[:space:]]*:[[:space:]]*5[0-9]{2}|[[:space:]]5[0-9]{2}[[:space:]])${SEP}CRITICAL${SEP}웹 서버 5xx 응답 발생(서버 오류)"
-  "web_4xx${SEP}(\"status\"[[:space:]]*:[[:space:]]*4[0-9]{2}|[[:space:]]4[0-9]{2}[[:space:]])${SEP}WARN${SEP}웹 서버 4xx 응답 발생(클라이언트 오류)"
+  # "web_5xx${SEP}(\"status\"[[:space:]]*:[[:space:]]*5[0-9]{2}|[[:space:]]5[0-9]{2}[[:space:]])${SEP}CRITICAL${SEP}웹 서버 5xx 응답 발생(서버 오류)"
+  # "web_4xx${SEP}(\"status\"[[:space:]]*:[[:space:]]*4[0-9]{2}|[[:space:]]4[0-9]{2}[[:space:]])${SEP}WARN${SEP}웹 서버 4xx 응답 발생(클라이언트 오류)"
   "web_429${SEP}(\"status\"[[:space:]]*:[[:space:]]*429|[[:space:]]429[[:space:]])${SEP}WARN${SEP}429 발생(과도 요청/레이트리밋) - 트래픽 스파이크 가능"
   "web_client_abort${SEP}([[:space:]]499[[:space:]]|client.*(canceled|closed)|context canceled)${SEP}WARN${SEP}클라이언트 요청 중단 증가(타임아웃/네트워크/프론트 이탈)"
   "web_static_404${SEP}([[:space:]]404[[:space:]].*\\.(js|css|png|jpg|jpeg|svg|webp|ico)(\\?|[[:space:]]|$)|\"status\":404.*\\.(js|css|png|jpg|jpeg|svg|webp|ico))${SEP}WARN${SEP}정적 리소스 404(배포 누락/경로 문제) 의심"
+)
+
+# 알림 제외 패턴: 아래에 매칭되면 RULES에 걸려도 알림 미전송
+IGNORE_PATTERNS=(
+  "GlobalExceptionHandler[[:space:]]*:[[:space:]]*UnexpectedException"   # 예상치 못한 예외(원인은 스택 트레이스 참고), 노이즈 감소용
+  "WebSocketMessageBrokerStats[[:space:]]*:[[:space:]]*WebSocketSession" # WebSocket 통계 INFO 로그, 에러 아님
 )
 
 now_kst(){ TZ=Asia/Seoul date '+%Y-%m-%d %H:%M:%S KST'; }
@@ -47,14 +53,14 @@ fmt_kst_from_epoch() {
 
 json_escape() {
   local s="$1"
-  s="${s//\\/\\\\}"; s="${s//\"/\\\"}"; s="${s//$'\n'/\\n}"
+  s="${s//$'\n'/__NL__}"; s="${s//\\/\\\\}"; s="${s//\"/\\\"}"; s="${s//__NL__/\\n}"
   printf "%s" "$s"
 }
 
 send_discord() {
   local title="$1"
   local body="$2"
-  local content="**[${HOST_TAG}] ${title}**\n${body}"
+  local content="**[${HOST_TAG}] ${title}**"$'\n'"${body}"
   content="$(json_escape "$content")"
   curl -sS -H "Content-Type: application/json" \
     -X POST \
@@ -116,10 +122,19 @@ while IFS= read -r line; do
   for rule in "${RULES[@]}"; do
     IFS=$'\x1f' read -r key regex sev hint <<< "$rule"
     if echo "$line" | grep -Eiq "$regex"; then
+      # 제외 패턴에 걸리면 알림 생략
+      skip=0
+      for ign in "${IGNORE_PATTERNS[@]}"; do
+        if echo "$line" | grep -Eiq "$ign"; then
+          skip=1
+          break
+        fi
+      done
+      [[ "$skip" -eq 1 ]] && continue
       cooldown_key="${current_comp}|${key}"
       read -r summary_count send_now last_epoch <<< "$(cooldown_status "$cooldown_key")"
       if (( summary_count > 0 )); then
-        send_discord "[LOG] 로그 요약(${sev}): ${current_comp}/${key}" \
+        send_discord "[🟡 LOG] 로그 요약(${sev}): ${current_comp}/${key}" \
 "====================
 TYPE: LOG SUMMARY
 SEVERITY: ${sev}
@@ -134,7 +149,7 @@ SEVERITY: ${sev}
       if (( send_now == 0 )); then
         continue
       fi
-      send_discord "[LOG] 로그 감지(${sev}): ${current_comp}/${key}" \
+      send_discord "[🟡 LOG] 로그 감지(${sev}): ${current_comp}/${key}" \
 "====================
 TYPE: LOG EVENT
 SEVERITY: ${sev}
