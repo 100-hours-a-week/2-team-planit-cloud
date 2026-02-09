@@ -63,9 +63,10 @@ cooldown_status() {                                                 # 쿨다운 
 send_discord() {                                                     # 디스코드 웹훅으로 메시지 전송
   local title="$1"
   local body="$2"
+  body="${body//$'\n'/__NL__}"
   body="${body//\\/\\\\}"
   body="${body//\"/\\\"}"
-  body="${body//$'\n'/\\n}"
+  body="${body//__NL__/\\n}"
   curl -sS -H "Content-Type: application/json" \
     -X POST \
     -d "{\"content\":\"**[${HOST_TAG}] ${title}**\\n${body}\"}" \
@@ -84,11 +85,11 @@ for item in "${URLS[@]}"; do                                          # 각 대�
   if ! check "$url"; then                                             # 헬스체크 실패 시 디스코드 알림 전송
     read -r summary_count send_now last_epoch <<< "$(cooldown_status "health|${name}")"
     if (( summary_count > 0 )); then
-      send_discord "[HEALTH] 헬스체크 요약: ${name}" \
+      send_discord "[🔴 HEALTH] 헬스체크 요약: ${name}" \
         "====================\nTYPE: HEALTH SUMMARY\n====================\n시간: $(now_kst)\n대상: ${name}\n요약:\n- 마지막 알림: $(fmt_kst_from_epoch "$last_epoch")\n- 마지막 알림 이후 추가 ${summary_count}회 실패"
     fi
     if (( send_now == 1 )); then
-      send_discord "[HEALTH] 헬스체크 실패: ${name}" \
+      send_discord "[🔴 HEALTH] 헬스체크 실패: ${name}" \
         "====================\nTYPE: HEALTH EVENT\n====================\n시간: $(now_kst)\n대상: ${name}\nURL: ${url}\n조치: 해당 프로세스 상태 확인 후 재기동/롤백 판단"
     fi
   fi

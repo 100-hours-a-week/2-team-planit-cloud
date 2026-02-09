@@ -68,9 +68,10 @@ send_discord() {                           # 디스코드 웹훅으로 메시지
   local title="$1"
   local body="$2"
   [[ -z "$WEBHOOK_URL" ]] && return 0
+  body="${body//$'\n'/__NL__}"
   body="${body//\\/\\\\}"
   body="${body//\"/\\\"}"
-  body="${body//$'\n'/\\n}"
+  body="${body//__NL__/\\n}"
   curl -sS -H "Content-Type: application/json" \
     -X POST \
     -d "{\"content\":\"**[${HOST_TAG}] ${title}**\\n${body}\"}" \
@@ -154,10 +155,10 @@ if (( ${#alerts[@]} > 0 )); then           # 임계치 초과가 있으면 디�
   fi
   read -r summary_count send_now last_epoch <<< "$(cooldown_status "resource|summary")"
   if (( summary_count > 0 )); then
-    send_discord "[RESOURCE] 성능 이상 요약" "====================\nTYPE: RESOURCE SUMMARY\n====================\n시간: $(now_kst)\n요약:\n- 마지막 알림: $(fmt_kst_from_epoch "$last_epoch")\n- 마지막 알림 이후 추가 ${summary_count}회 발생"
+    send_discord "[🟠 RESOURCE] 성능 이상 요약" "====================\nTYPE: RESOURCE SUMMARY\n====================\n시간: $(now_kst)\n요약:\n- 마지막 알림: $(fmt_kst_from_epoch "$last_epoch")\n- 마지막 알림 이후 추가 ${summary_count}회 발생"
   fi
   if (( send_now == 1 )); then
-    send_discord "[RESOURCE] 성능 이상(임계치 초과) 감지" "====================\nTYPE: RESOURCE EVENT\n====================\n${msg}"
+    send_discord "[🟠 RESOURCE] 성능 이상(임계치 초과) 감지" "====================\nTYPE: RESOURCE EVENT\n====================\n${msg}"
   fi
 fi
 

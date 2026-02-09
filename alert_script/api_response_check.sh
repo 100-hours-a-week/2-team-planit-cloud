@@ -64,16 +64,17 @@ cooldown_status() {                                                   # 쿨다�
 
 json_escape() {                                                       # 디스코드 JSON 전송을 위한 문자열 escape
   local s="$1"
+  s="${s//$'\n'/__NL__}"
   s="${s//\\/\\\\}"
   s="${s//\"/\\\"}"
-  s="${s//$'\n'/\\n}"
+  s="${s//__NL__/\\n}"
   printf "%s" "$s"
 }
 
 send_discord() {                                                      # 디스코드 웹훅으로 메시지 전송
   local title="$1"
   local body="$2"
-  local content="**[${HOST_TAG}] ${title}**\n${body}"
+  local content="**[${HOST_TAG}] ${title}**"$'\n'"${body}"
   content="$(json_escape "$content")"
   curl -sS -H "Content-Type: application/json" \
     -X POST \
@@ -147,7 +148,7 @@ check_api() {                                                         # API 1개
   if ! is_allowed_code "$http_code" "$allowed_codes"; then            # 상태코드 임계치 위반
     read -r summary_count send_now last_epoch <<< "$(cooldown_status "api|${name}|status")"
     if (( summary_count > 0 )); then
-      send_discord "[API] API 체크 요약(상태코드): ${name}" \
+      send_discord "[🟠 API] API 체크 요약(상태코드): ${name}" \
 "====================
 TYPE: API SUMMARY
 KIND: STATUS
@@ -159,7 +160,7 @@ KIND: STATUS
 - 마지막 알림 이후 추가 ${summary_count}회 실패"
     fi
     if (( send_now == 1 )); then
-      send_discord "[API] API 체크 실패(상태코드): ${name}" \
+      send_discord "[🟠 API] API 체크 실패(상태코드): ${name}" \
 "====================
 TYPE: API EVENT
 KIND: STATUS
@@ -177,7 +178,7 @@ Latency: ${latency_ms}ms (limit ${max_ms}ms)"
   if [[ "$latency_ms" -gt "$max_ms" ]]; then                          # 지연시간 임계치 위반
     read -r summary_count send_now last_epoch <<< "$(cooldown_status "api|${name}|latency")"
     if (( summary_count > 0 )); then
-      send_discord "[API] API 체크 요약(지연): ${name}" \
+      send_discord "[🟠 API] API 체크 요약(지연): ${name}" \
 "====================
 TYPE: API SUMMARY
 KIND: LATENCY
@@ -189,7 +190,7 @@ KIND: LATENCY
 - 마지막 알림 이후 추가 ${summary_count}회 실패"
     fi
     if (( send_now == 1 )); then
-      send_discord "[API] API 체크 실패(지연): ${name}" \
+      send_discord "[🟠 API] API 체크 실패(지연): ${name}" \
 "====================
 TYPE: API EVENT
 KIND: LATENCY
