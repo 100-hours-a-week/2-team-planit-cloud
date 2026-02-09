@@ -35,11 +35,11 @@ planit-ai.store {
 		}
 
 		handle {
-			# 60초 안에 120회 초과 시 429 + Retry-After (60초 제한)
+			# 60초 안에 300회 초과 시 429 + Retry-After (60초 제한)
 			rate_limit {
 				zone api {
-					key {header.CloudFront-Viewer-Address}{remote_ip}
-					events 120
+					key {header.CloudFront-Viewer-Address}{header.X-Forwarded-For}{remote_ip}
+					events 300
 					window 60s
 				}
 			}
@@ -55,5 +55,4 @@ planit-ai.store {
 		# 정적 파일 서버 활성화
 		file_server
 	}
-
 }
