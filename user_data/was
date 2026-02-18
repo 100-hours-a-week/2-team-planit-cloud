@@ -1,0 +1,57 @@
+#!/bin/bash
+set -euxo pipefail
+
+REGION="ap-northeast-2"
+ACCOUNT_ID="713881824287"
+REPO_NAME="planit-was"
+IMAGE_TAG="latest"
+
+APP_DIR="/opt/planit"
+LOG_DIR="/var/log/planit/was"
+
+mkdir -p "${APP_DIR}" "${LOG_DIR}"
+cd "${APP_DIR}"
+
+# ✅ 환경변수 직접 주입
+export SPRING_DATASOURCE_URL="****"
+export SPRING_DATASOURCE_USERNAME="****"
+export SPRING_DATASOURCE_PASSWORD="****"
+export JWT_SECRET="****"
+export AWS_S3_BUCKET="planit-s3-bucket"
+export AWS_S3_ACCESS_KEY_ID="****"
+export AWS_S3_SECRET_ACCESS_KEY="****"
+export CLOUDFRONT_DOMAIN="dijh9mhj7vomy.cloudfront.net"
+export AWS_REGION="${REGION}"
+export APP_IMAGE="${ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com/${REPO_NAME}:${IMAGE_TAG}"
+
+# ECR 로그인
+aws ecr get-login-password --region "${REGION}" \
+  | docker login --username AWS --password-stdin "${ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com"
+
+# docker-compose.yml 생성 (환경변수는 위 export 값 사용)
+cat <<'EOF' > docker-compose.yml
+services:
+  app:
+    image: ${APP_IMAGE}
+    container_name: planit-app
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      TZ: Asia/Seoul
+      SPRING_DATASOURCE_URL: ${SPRING_DATASOURCE_URL}
+      SPRING_DATASOURCE_USERNAME: ${SPRING_DATASOURCE_USERNAME}
+      SPRING_DATASOURCE_PASSWORD: ${SPRING_DATASOURCE_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+      AWS_S3_BUCKET: ${AWS_S3_BUCKET}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+      AWS_REGION: ${AWS_REGION}
+      CLOUDFRONT_DOMAIN: ${CLOUDFRONT_DOMAIN}
+    volumes:
+      - /var/log/planit/was:/var/log/planit/was
+    restart: unless-stopped
+EOF
+
+docker compose pull
+docker compose up -d
