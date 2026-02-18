@@ -25,12 +25,8 @@ export SPRING_DATASOURCE_URL="jdbc:mysql://proxysql:6033/planit_db?useSSL=false&
 export SPRING_DATASOURCE_USERNAME="****"
 export SPRING_DATASOURCE_PASSWORD="****"
 export JWT_SECRET="****"
-export AWS_S3_BUCKET="planit-s3-bucket"
-export AWS_S3_ACCESS_KEY_ID="****"
-export AWS_S3_SECRET_ACCESS_KEY="****"
-# docker-compose가 참조하는 변수명에 맞춤 (앱이 AWS_ACCESS_KEY_ID 사용 시)
-export AWS_ACCESS_KEY_ID="${AWS_S3_ACCESS_KEY_ID}"
-export AWS_SECRET_ACCESS_KEY="${AWS_S3_SECRET_ACCESS_KEY}"
+export AWS_S3_BUCKET="****"
+# S3/CloudFront 접근은 EC2 Instance Profile(IAM 역할) 사용
 export CLOUDFRONT_DOMAIN="dijh9mhj7vomy.cloudfront.net"
 export AWS_REGION="${REGION}"
 export APP_IMAGE="${ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com/${REPO_NAME}:${IMAGE_TAG}"
@@ -112,8 +108,6 @@ services:
       SPRING_DATASOURCE_PASSWORD: ${SPRING_DATASOURCE_PASSWORD}
       JWT_SECRET: ${JWT_SECRET}
       AWS_S3_BUCKET: ${AWS_S3_BUCKET}
-      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
-      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
       AWS_REGION: ${AWS_REGION}
       CLOUDFRONT_DOMAIN: ${CLOUDFRONT_DOMAIN}
     volumes:
