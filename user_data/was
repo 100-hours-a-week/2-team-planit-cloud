@@ -8,21 +8,77 @@ IMAGE_TAG="latest"
 
 APP_DIR="/opt/planit"
 LOG_DIR="/var/log/planit/was"
+PROXYSQL_CFG="${APP_DIR}/proxysql.cnf"
+PROXYSQL_INIT_SQL="${APP_DIR}/proxysql-init.sql"
+
+# MySQL 백엔드 (마이그레이션: v1=기존, v2=신규 · 추후 v2 replica set)
+MYSQL_V1_HOST="${MYSQL_V1_HOST:-}"
+MYSQL_V1_PORT="${MYSQL_V1_PORT:-3306}"
+MYSQL_V2_HOST="${MYSQL_V2_HOST:-}"
+MYSQL_V2_PORT="${MYSQL_V2_PORT:-3306}"
 
 mkdir -p "${APP_DIR}" "${LOG_DIR}"
 cd "${APP_DIR}"
 
-# ✅ 환경변수 직접 주입
-export SPRING_DATASOURCE_URL="****"
+# ✅ 환경변수 직접 주입 (앱은 ProxySQL 6033으로 접속)
+export SPRING_DATASOURCE_URL="jdbc:mysql://proxysql:6033/planit_db?useSSL=false&serverTimezone=Asia/Seoul&characterEncoding=utf8"
 export SPRING_DATASOURCE_USERNAME="****"
 export SPRING_DATASOURCE_PASSWORD="****"
 export JWT_SECRET="****"
 export AWS_S3_BUCKET="planit-s3-bucket"
 export AWS_S3_ACCESS_KEY_ID="****"
 export AWS_S3_SECRET_ACCESS_KEY="****"
+# docker-compose가 참조하는 변수명에 맞춤 (앱이 AWS_ACCESS_KEY_ID 사용 시)
+export AWS_ACCESS_KEY_ID="${AWS_S3_ACCESS_KEY_ID}"
+export AWS_SECRET_ACCESS_KEY="${AWS_S3_SECRET_ACCESS_KEY}"
 export CLOUDFRONT_DOMAIN="dijh9mhj7vomy.cloudfront.net"
 export AWS_REGION="${REGION}"
 export APP_IMAGE="${ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com/${REPO_NAME}:${IMAGE_TAG}"
+
+# ProxySQL용 계정 (현재 앱 계정 사용)
+DB_USER="${SPRING_DATASOURCE_USERNAME:-planit}"
+DB_PASS="${SPRING_DATASOURCE_PASSWORD:-}"
+# SQL 내 작은따옴표 이스케이프
+DB_PASS_ESC="${DB_PASS//\'/\'\'}"
+
+# ProxySQL 2.x: 최소 cnf만 사용 (datadir, admin). 나머지는 admin 포트로 로드.
+cat <<EOF > "${PROXYSQL_CFG}"
+datadir="/var/lib/proxysql"
+admin_variables=
+{
+  admin_credentials="admin:admin"
+  mysql_ifaces="0.0.0.0:6032"
+}
+mysql_variables=
+{
+  threads=4
+  max_connections=2048
+  server_version="8.0.31"
+  monitor_username="${DB_USER}"
+  monitor_password="${DB_PASS}"
+  connect_retries_on_failure=10
+}
+EOF
+
+# ProxySQL admin에 넣을 초기 데이터 (v1=writer 0, v2=reader 1 · SELECT는 v2로)
+cat <<EOF > "${PROXYSQL_INIT_SQL}"
+-- 백엔드 서버 (hostgroup 0=writer=v1, 1=reader=v2)
+INSERT INTO main.mysql_servers (hostname, port, hostgroup_id, max_connections, comment) VALUES
+('${MYSQL_V1_HOST}', ${MYSQL_V1_PORT}, 0, 200, 'v1-writer'),
+('${MYSQL_V2_HOST}', ${MYSQL_V2_PORT}, 1, 200, 'v2-reader');
+LOAD MYSQL SERVERS TO RUNTIME; SAVE MYSQL SERVERS TO DISK;
+
+-- 앱 계정 (default_hostgroup=0 → 쓰기는 v1)
+INSERT INTO main.mysql_users (username, password, default_hostgroup, default_schema, max_connections, active, transaction_persistent) VALUES
+('${DB_USER}', '${DB_PASS_ESC}', 0, 'planit_db', 100, 1, 1);
+LOAD MYSQL USERS TO RUNTIME; SAVE MYSQL USERS TO DISK;
+
+-- SELECT는 v2(reader)로
+INSERT INTO main.mysql_query_rules (rule_id, active, match_pattern, destination_hostgroup, apply, comment) VALUES
+(1, 1, '^SELECT ', 1, 1, 'read-to-v2'),
+(2, 1, '^select ', 1, 1, 'read-to-v2-lower');
+LOAD MYSQL QUERY RULES TO RUNTIME; SAVE MYSQL QUERY RULES TO DISK;
+EOF
 
 # ECR 로그인
 aws ecr get-login-password --region "${REGION}" \
@@ -31,6 +87,18 @@ aws ecr get-login-password --region "${REGION}" \
 # docker-compose.yml 생성 (환경변수는 위 export 값 사용)
 cat <<'EOF' > docker-compose.yml
 services:
+  proxysql:
+    image: proxysql/proxysql:2.5.5
+    container_name: planit-proxysql
+    ports:
+      - "6033:6033"
+      - "6032:6032"
+    volumes:
+      - /opt/planit/proxysql.cnf:/etc/proxysql.cnf
+      - proxysql_data:/var/lib/proxysql
+    command: ["-f", "-c", "/etc/proxysql.cnf"]
+    restart: unless-stopped
+
   app:
     image: ${APP_IMAGE}
     container_name: planit-app
@@ -50,8 +118,20 @@ services:
       CLOUDFRONT_DOMAIN: ${CLOUDFRONT_DOMAIN}
     volumes:
       - /var/log/planit/was:/var/log/planit/was
+    depends_on:
+      - proxysql
     restart: unless-stopped
+
+volumes:
+  proxysql_data:
 EOF
 
 docker compose pull
-docker compose up -d
+docker compose up -d proxysql
+echo "ProxySQL 기동 대기 후 초기 설정 로드..."
+sleep 25
+docker run --rm --network container:planit-proxysql \
+  -v "${PROXYSQL_INIT_SQL}:/init.sql:ro" \
+  mysql:8.0 \
+  sh -c "mysql -h127.0.0.1 -P6032 -uadmin -padmin < /init.sql"
+docker compose up -d app
