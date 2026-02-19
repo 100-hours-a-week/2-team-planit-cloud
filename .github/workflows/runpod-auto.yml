@@ -377,6 +377,67 @@ jobs:
             tail -n 200 "$LOG" || true
             exit 1
 
+      # ===== V2 ASG: desired=1 이므로 “다 끄고 다시 1대 생성” =====
+      - name: Restart V2 AI ASG (Desired 0 -> 1)
+        if: steps.decide.outputs.action == 'start'
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: ap-northeast-2
+        run: |
+          set -euo pipefail
+          ASG_NAME="planit-v2-asg-ai"
+
+          echo "Set desired capacity to 0"
+          aws autoscaling update-auto-scaling-group \
+            --auto-scaling-group-name "$ASG_NAME" \
+            --min-size 0 \
+            --desired-capacity 0 \
+            --max-size 1
+
+          echo "Wait for instances to terminate..."
+          for i in $(seq 1 60); do
+            count=$(aws autoscaling describe-auto-scaling-groups \
+              --auto-scaling-group-name "$ASG_NAME" \
+              --query 'AutoScalingGroups[0].Instances | length(@)' \
+              --output text)
+            echo "Instance count: $count (try $i/60)"
+            if [ "$count" = "0" ]; then
+              break
+            fi
+            sleep 5
+          done
+
+          echo "Set desired capacity back to 1"
+          aws autoscaling update-auto-scaling-group \
+            --auto-scaling-group-name "$ASG_NAME" \
+            --min-size 1 \
+            --desired-capacity 1 \
+            --max-size 1
+
+          echo "Wait for new instance to be InService..."
+          for i in $(seq 1 90); do
+            lifecycle=$(aws autoscaling describe-auto-scaling-groups \
+              --auto-scaling-group-name "$ASG_NAME" \
+              --query 'AutoScalingGroups[0].Instances[0].LifecycleState' \
+              --output text 2>/dev/null || echo "None")
+            health=$(aws autoscaling describe-auto-scaling-groups \
+              --auto-scaling-group-name "$ASG_NAME" \
+              --query 'AutoScalingGroups[0].Instances[0].HealthStatus' \
+              --output text 2>/dev/null || echo "None")
+
+            echo "LifecycleState=$lifecycle HealthStatus=$health (try $i/90)"
+
+            if [ "$lifecycle" = "InService" ] && [ "$health" = "Healthy" ]; then
+              echo "V2 AI ASG is back online"
+              exit 0
+            fi
+            sleep 10
+          done
+
+          echo "Timed out waiting for ASG to become healthy"
+          exit 1
+
       - name: Remove IP from Security Group
         if: always() && steps.decide.outputs.action == 'start'
         env:
