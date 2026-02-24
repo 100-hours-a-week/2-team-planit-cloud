@@ -31,3 +31,8 @@ output "nat_instance_ids" {
   description = "NAT Instance ID 목록"
   value       = module.network.nat_instance_ids
 }
+
+output "security_group_ids" {
+  description = "Security 모듈 보안그룹 ID 매핑"
+  value       = module.security.security_group_ids
+}

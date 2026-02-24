@@ -50,3 +50,9 @@ module "network" {
   nat_instance_ami_id    = var.nat_instance_ami_id
   nat_instance_key_name  = var.nat_instance_key_name
 }
+
+module "security" {
+  source = "./modules/security"
+
+  vpc_id = module.network.vpc_id
+}
