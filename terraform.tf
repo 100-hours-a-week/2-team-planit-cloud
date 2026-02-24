@@ -51,8 +51,31 @@ module "network" {
   nat_instance_key_name  = var.nat_instance_key_name
 }
 
+# ------------------------------------------------------------------------------
+# Security 모듈 (보안 그룹)
+# ------------------------------------------------------------------------------
+
 module "security" {
   source = "./modules/security"
 
   vpc_id = module.network.vpc_id
+}
+
+# ------------------------------------------------------------------------------
+# Storage 모듈 (DB EC2, EBS, S3)
+# ------------------------------------------------------------------------------
+
+module "storage" {
+  source = "./modules/storage"
+
+  environment           = var.environment
+  project               = var.project
+  private_db_subnet_ids = module.network.private_db_subnet_ids
+  application_sg_id     = module.security.security_group_ids.db
+  db_ami_id             = var.db_ami_id
+  db_key_name           = var.db_key_name
+
+  db_root_volume_size_gb = var.db_root_volume_size_gb
+  db_data_volume_size_gb = var.db_data_volume_size_gb
+  cloudfront_oai_iam_arn = var.cloudfront_oai_iam_arn
 }

@@ -49,3 +49,36 @@ variable "nat_instance_key_name" {
   type        = string
   default     = "planit-keypair"
 }
+
+# ------------------------------------------------------------------------------
+# Storage 모듈
+# ------------------------------------------------------------------------------
+
+variable "db_ami_id" {
+  description = "DB EC2 AMI ID (NAT와 동일 권장)"
+  type        = string
+  default     = "ami-04f06fb5ae9dcc778"
+}
+
+variable "db_key_name" {
+  description = "DB EC2 SSH 키 페어 이름"
+  type        = string
+  default     = "planit-keypair"
+}
+
+variable "db_root_volume_size_gb" {
+  description = "DB EC2 Root 볼륨 크기(GB)"
+  type        = number
+  default     = 10
+}
+
+variable "db_data_volume_size_gb" {
+  description = "DB EC2 데이터 EBS 볼륨 크기(GB)"
+  type        = number
+  default     = 20
+}
+
+variable "cloudfront_oai_iam_arn" {
+  description = "CloudFront OAI IAM ARN (FE 버킷 GetObject 허용, 필수)"
+  type        = string
+}
