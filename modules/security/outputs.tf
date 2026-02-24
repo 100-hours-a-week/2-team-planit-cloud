@@ -9,3 +9,11 @@ output "security_group_ids" {
     nat   = aws_security_group.this["nat"].id
   }
 }
+
+output "iam_role_names" {
+  description = "IAM Role 이름 매핑"
+  value = {
+    ec2_ssm = aws_iam_role.ec2_ssm.name
+    ec2_s3  = aws_iam_role.ec2_s3.name
+  }
+}

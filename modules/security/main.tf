@@ -1,11 +1,11 @@
 locals {
   sg_names = {
-    alb   = "planit-v2-alb-sg"
-    ai    = "planit-v2-ai-sg"
-    be    = "planit-v2-be-sg"
-    db    = "planit-v2-db-sg"
-    queue = "planit-v2-queue-sg"
-    nat   = "planit-nat-sg"
+    alb   = "${var.project}-${var.environment}-alb-sg"
+    ai    = "${var.project}-${var.environment}-ai-sg"
+    be    = "${var.project}-${var.environment}-be-sg"
+    db    = "${var.project}-${var.environment}-db-sg"
+    queue = "${var.project}-${var.environment}-queue-sg"
+    nat   = "${var.project}-${var.environment}-nat-access-sg"
   }
 
   cloudfront_prefix_list_id = "pl-22a6434b"
@@ -373,6 +373,8 @@ resource "aws_security_group" "this" {
 
   tags = {
     Name = each.value
+    Project     = var.project
+    Environment = var.environment
   }
 
   lifecycle {
@@ -405,4 +407,68 @@ resource "aws_vpc_security_group_egress_rule" "this" {
 
   referenced_security_group_id = try(each.value.target_sg, null) != null ? aws_security_group.this[each.value.target_sg].id : null
   cidr_ipv4                    = try(each.value.cidr_ipv4, null)
+}
+
+data "aws_iam_policy_document" "ec2_assume_role" {
+  statement {
+    sid     = "EC2AssumeRole"
+    actions = ["sts:AssumeRole"]
+
+    principals {
+      type        = "Service"
+      identifiers = [var.ec2_assume_role_service]
+    }
+  }
+}
+
+resource "aws_iam_role" "ec2_ssm" {
+  name               = "${var.project}-${var.environment}-ec2-ssm-role"
+  assume_role_policy = data.aws_iam_policy_document.ec2_assume_role.json
+
+  tags = {
+    Name        = "${var.project}-${var.environment}-ec2-ssm-role"
+    Project     = var.project
+    Environment = var.environment
+  }
+}
+
+resource "aws_iam_role_policy_attachment" "ec2_ssm_managed" {
+  for_each = toset(var.ec2_ssm_managed_policy_arns)
+
+  role       = aws_iam_role.ec2_ssm.name
+  policy_arn = each.value
+}
+
+resource "aws_iam_role_policy" "ec2_ssm_inline" {
+  count = var.ec2_ssm_inline_policy_json == null ? 0 : 1
+
+  name   = "${var.project}-${var.environment}-ec2-ssm-inline-policy"
+  role   = aws_iam_role.ec2_ssm.id
+  policy = var.ec2_ssm_inline_policy_json
+}
+
+resource "aws_iam_role" "ec2_s3" {
+  name               = "${var.project}-${var.environment}-ec2-s3-role"
+  assume_role_policy = data.aws_iam_policy_document.ec2_assume_role.json
+
+  tags = {
+    Name        = "${var.project}-${var.environment}-ec2-s3-role"
+    Project     = var.project
+    Environment = var.environment
+  }
+}
+
+resource "aws_iam_role_policy_attachment" "ec2_s3_managed" {
+  for_each = toset(var.ec2_s3_managed_policy_arns)
+
+  role       = aws_iam_role.ec2_s3.name
+  policy_arn = each.value
+}
+
+resource "aws_iam_role_policy" "ec2_s3_inline" {
+  count = var.ec2_s3_inline_policy_json == null ? 0 : 1
+
+  name   = "${var.project}-${var.environment}-ec2-s3-inline-policy"
+  role   = aws_iam_role.ec2_s3.id
+  policy = var.ec2_s3_inline_policy_json
 }
