@@ -22,10 +22,17 @@ jobs:
     env:
       # RunPod
       RUNPOD_API_KEY: ${{ secrets.RUNPOD_API_KEY }}
-      # AI server (EC2)
+
+      # AI server (EC2) - PROD (기존 유지)
       EC2_HOST: ${{ secrets.EC2_HOST }}
       EC2_USERNAME: ${{ secrets.EC2_USERNAME }}
       EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
+
+      # AI server (EC2) - DEV (추가, 없으면 자동 스킵)
+      EC2_HOST_DEV: ${{ secrets.EC2_HOST_DEV }}
+      EC2_USERNAME_DEV: ${{ secrets.EC2_USERNAME }}
+      EC2_SSH_KEY_DEV: ${{ secrets.EC2_SSH_KEY }}
+
       # Discord
       DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
 
@@ -56,7 +63,6 @@ jobs:
       - name: Install jq
         if: steps.decide.outputs.action != 'none'
         run: |
-          # jq: JSON 응답에서 pod id, IP 등을 추출할 때 사용
           sudo apt-get update -y >/dev/null
           sudo apt-get install -y jq >/dev/null
 
@@ -66,17 +72,15 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # RunPod API로 현재 pod 목록 조회
           pods="$(curl -fsS --max-time 25 \
             --request GET \
             --url "https://rest.runpod.io/v1/pods" \
             --header "Authorization: Bearer ${RUNPOD_API_KEY}")"
-          # 목록의 첫 번째 pod id를 사용 (1개만 운영하는 전제)
+
           pod_id="$(echo "$pods" | jq -r '.[0].id // .[0].pod.id // empty')"
           count="$(echo "$pods" | jq -r 'length')"
 
           echo "count=$count" >> "$GITHUB_OUTPUT"
-          # pod 유무 플래그 출력
           if [ -n "$pod_id" ] && [ "$pod_id" != "null" ]; then
             echo "pod_id=$pod_id" >> "$GITHUB_OUTPUT"
             echo "has_pod=true" >> "$GITHUB_OUTPUT"
@@ -94,7 +98,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # 목록에서 선택된 pod를 중지
           POD_ID="${{ steps.list_pods.outputs.pod_id }}"
           if [ -z "${POD_ID:-}" ]; then
             echo "No pods found to stop."
@@ -125,7 +128,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # 목록에서 선택된 pod를 시작 시도
           POD_ID="${{ steps.list_pods.outputs.pod_id }}"
           URL="https://rest.runpod.io/v1/pods/${POD_ID}/start"
 
@@ -154,7 +156,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # 기존 pod start 성공이면 그대로 사용, 아니면 복구 플로우로 전환
           if [ "${{ steps.list_pods.outputs.has_pod }}" = "true" ] && [ "${{ steps.start_existing.outputs.ok }}" = "1" ]; then
             echo "pod_id=${{ steps.list_pods.outputs.pod_id }}" >> "$GITHUB_OUTPUT"
             echo "recovered=false" >> "$GITHUB_OUTPUT"
@@ -169,7 +170,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # start 실패 시 기존 pod를 삭제 (best-effort)
           POD_ID="${{ steps.list_pods.outputs.pod_id }}"
           curl -fsS --max-time 25 -X DELETE \
             --url "https://rest.runpod.io/v1/pods/${POD_ID}" \
@@ -265,7 +265,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # 최종적으로 사용할 pod id 확정
           if [ "${{ steps.pod_select.outputs.recovered }}" = "false" ]; then
             echo "pod_id=${{ steps.list_pods.outputs.pod_id }}" >> "$GITHUB_OUTPUT"
             echo "recovered=false" >> "$GITHUB_OUTPUT"
@@ -285,7 +284,6 @@ jobs:
           BASE="https://${POD}-8000.proxy.runpod.net"
           V1="${BASE}"
 
-          # 30분 = 1800초 = 180회 * 10초
           for i in $(seq 1 180); do
             echo "Polling vLLM proxy $i/180..."
             code="$(curl -sS --max-time 20 -o /dev/null -w "%{http_code}" \
@@ -303,27 +301,52 @@ jobs:
           echo "Failed to resolve vLLM endpoint via proxy within 30 minutes."
           exit 1
 
+      # =========================
+      # SSH Allowlist (PROD + optional DEV)
+      # =========================
       - name: Get GitHub Actions IP
         if: steps.decide.outputs.action == 'start'
         id: get-ip
         uses: haythem/public-ip@v1.3
 
-      - name: Add IP to SG
+      - name: Add IP to SG (prod + optional dev)
         if: steps.decide.outputs.action == 'start'
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           AWS_REGION: ap-northeast-2
+          PROD_SG: ${{ secrets.SECURITY_GROUP_ID }}
+          DEV_SG: ${{ secrets.SECURITY_GROUP_ID_DEV }}
         run: |
+          set -euo pipefail
+          ip="${{ steps.get-ip.outputs.ipv4 }}/32"
+
+          echo "Authorize $ip to PROD SG: $PROD_SG"
           aws ec2 authorize-security-group-ingress \
-            --group-id ${{ secrets.SECURITY_GROUP_ID }} \
+            --group-id "$PROD_SG" \
             --protocol tcp \
             --port 22 \
-            --cidr ${{ steps.get-ip.outputs.ipv4 }}/32 \
-            || echo "IP may already be in security group"
+            --cidr "$ip" \
+            || echo "IP may already be in PROD security group"
+
+          if [ -n "${DEV_SG:-}" ]; then
+            echo "Authorize $ip to DEV SG: $DEV_SG"
+            aws ec2 authorize-security-group-ingress \
+              --group-id "$DEV_SG" \
+              --protocol tcp \
+              --port 22 \
+              --cidr "$ip" \
+              || echo "IP may already be in DEV security group"
+          else
+            echo "DEV_SG not set. Skip DEV SG authorize."
+          fi
+
           sleep 10
 
-      - name: Update AI .env VLLM_BASE_URL only and restart AI server
+      # =========================
+      # Update PROD AI server
+      # =========================
+      - name: Update PROD AI .env VLLM_BASE_URL only and restart AI server
         if: steps.decide.outputs.action == 'start'
         uses: appleboy/ssh-action@v1.0.3
         env:
@@ -345,7 +368,6 @@ jobs:
             test -d "$APP_DIR"
             test -f "$ENV_FILE"
 
-            # VLLM_BASE_URL 한 줄만 교체 (기존 따옴표 스타일 유지)
             if grep -qE '^VLLM_BASE_URL="' "$ENV_FILE"; then
               sed -i "s|^VLLM_BASE_URL=\".*\"|VLLM_BASE_URL=\"${NEW_VLLM_BASE_URL}\"|" "$ENV_FILE"
             elif grep -qE "^VLLM_BASE_URL='" "$ENV_FILE"; then
@@ -357,23 +379,73 @@ jobs:
             fi
             chmod 600 "$ENV_FILE"
 
-            # AI 서버 재시작
             sudo fuser -k 8000/tcp || true
-            echo "STEP: start app"
             cd "$APP_DIR"
             nohup ./.venv/bin/python ./main.py > "$LOG" 2>&1 &
 
-            # 헬스체크
             for retry_count in {1..30}; do
               code=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/health || true)
               if [ "$code" -eq 200 ] || [ "$code" -eq 401 ]; then
-                echo "AI server is up (HTTP $code)"
+                echo "PROD AI server is up (HTTP $code)"
                 exit 0
               fi
               sleep 10
             done
 
-            echo "AI server failed to start."
+            echo "PROD AI server failed to start."
+            tail -n 200 "$LOG" || true
+            exit 1
+
+      # =========================
+      # Update DEV AI server (optional)
+      # =========================
+      - name: Update DEV AI .env VLLM_BASE_URL only and restart AI server (optional)
+        if: steps.decide.outputs.action == 'start' && env.EC2_HOST_DEV != ''
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          NEW_VLLM_BASE_URL: ${{ steps.endpoint.outputs.vllm_base_url }}
+        with:
+          host: ${{ env.EC2_HOST_DEV }}
+          username: ${{ env.EC2_USERNAME_DEV }}
+          key: ${{ env.EC2_SSH_KEY_DEV }}
+          envs: NEW_VLLM_BASE_URL
+          script: |
+            set -e
+            trap 'echo "FAILED at line $LINENO"; exit 1' ERR
+
+            BASE="/var/www/planit/ai"
+            APP_DIR="$BASE/app"
+            ENV_FILE="$APP_DIR/.env"
+            LOG="$BASE/app.log"
+
+            test -d "$APP_DIR"
+            test -f "$ENV_FILE"
+
+            if grep -qE '^VLLM_BASE_URL="' "$ENV_FILE"; then
+              sed -i "s|^VLLM_BASE_URL=\".*\"|VLLM_BASE_URL=\"${NEW_VLLM_BASE_URL}\"|" "$ENV_FILE"
+            elif grep -qE "^VLLM_BASE_URL='" "$ENV_FILE"; then
+              sed -i "s|^VLLM_BASE_URL='.*'|VLLM_BASE_URL='${NEW_VLLM_BASE_URL}'|" "$ENV_FILE"
+            elif grep -qE '^VLLM_BASE_URL=' "$ENV_FILE"; then
+              sed -i "s|^VLLM_BASE_URL=.*|VLLM_BASE_URL=\"${NEW_VLLM_BASE_URL}\"|" "$ENV_FILE"
+            else
+              echo "VLLM_BASE_URL=\"${NEW_VLLM_BASE_URL}\"" >> "$ENV_FILE"
+            fi
+            chmod 600 "$ENV_FILE"
+
+            sudo fuser -k 8000/tcp || true
+            cd "$APP_DIR"
+            nohup ./.venv/bin/python ./main.py > "$LOG" 2>&1 &
+
+            for retry_count in {1..30}; do
+              code=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/health || true)
+              if [ "$code" -eq 200 ] || [ "$code" -eq 401 ]; then
+                echo "DEV AI server is up (HTTP $code)"
+                exit 0
+              fi
+              sleep 10
+            done
+
+            echo "DEV AI server failed to start."
             tail -n 200 "$LOG" || true
             exit 1
 
@@ -438,20 +510,35 @@ jobs:
           echo "Timed out waiting for ASG to become healthy"
           exit 1
 
-      - name: Remove IP from Security Group
+      - name: Remove IP from Security Group (prod + optional dev)
         if: always() && steps.decide.outputs.action == 'start'
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           AWS_REGION: ap-northeast-2
+          PROD_SG: ${{ secrets.SECURITY_GROUP_ID }}
+          DEV_SG: ${{ secrets.SECURITY_GROUP_ID_DEV }}
         run: |
+          set -euo pipefail
+          ip="${{ steps.get-ip.outputs.ipv4 }}/32"
+
           aws ec2 revoke-security-group-ingress \
-            --group-id ${{ secrets.SECURITY_GROUP_ID }} \
+            --group-id "$PROD_SG" \
             --protocol tcp \
             --port 22 \
-            --cidr ${{ steps.get-ip.outputs.ipv4 }}/32 \
-            || echo "Failed to remove IP or rule not found"
+            --cidr "$ip" \
+            || echo "Failed to remove IP or rule not found (PROD)"
 
+          if [ -n "${DEV_SG:-}" ]; then
+            aws ec2 revoke-security-group-ingress \
+              --group-id "$DEV_SG" \
+              --protocol tcp \
+              --port 22 \
+              --cidr "$ip" \
+              || echo "Failed to remove IP or rule not found (DEV)"
+          else
+            echo "DEV_SG not set. Skip DEV SG revoke."
+          fi
 
       - name: Notify Discord on success
         if: success() && steps.decide.outputs.action != 'none'
