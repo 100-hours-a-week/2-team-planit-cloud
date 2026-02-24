@@ -46,15 +46,15 @@ output "availability_zones" {
 }
 
 # ------------------------------------------------------------------------------
-# NAT Instance (선택)
+# NAT Instance (AZ당 1대, 총 2대)
 # ------------------------------------------------------------------------------
 
-output "nat_instance_id" {
-  description = "NAT Instance ID (enable_nat_instance=true일 때만)"
-  value       = var.enable_nat_instance ? aws_instance.nat[0].id : null
+output "nat_instance_ids" {
+  description = "NAT Instance ID 목록 (enable_nat_instance=true일 때만)"
+  value       = var.enable_nat_instance ? aws_instance.nat[*].id : []
 }
 
-output "nat_instance_private_ip" {
-  description = "NAT Instance Private IP"
-  value       = var.enable_nat_instance ? aws_instance.nat[0].private_ip : null
+output "nat_instance_private_ips" {
+  description = "NAT Instance Private IP 목록"
+  value       = var.enable_nat_instance ? aws_instance.nat[*].private_ip : []
 }

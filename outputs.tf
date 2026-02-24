@@ -27,7 +27,7 @@ output "availability_zones" {
   value       = module.network.availability_zones
 }
 
-output "nat_instance_id" {
-  description = "NAT Instance ID"
-  value       = module.network.nat_instance_id
+output "nat_instance_ids" {
+  description = "NAT Instance ID 목록"
+  value       = module.network.nat_instance_ids
 }

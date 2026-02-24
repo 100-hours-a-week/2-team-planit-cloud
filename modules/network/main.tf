@@ -44,7 +44,7 @@ resource "aws_internet_gateway" "main" {
 locals {
   azs = slice(data.aws_availability_zones.available.names, 0, 2)
 
-  # CIDR 블록 (고정 설계)
+  # CIDR 블록
   public_cidrs      = ["10.0.2.0/24", "10.0.3.0/24"]
   private_app_cidrs  = ["10.0.10.0/24", "10.0.11.0/24"]
   private_db_cidrs   = ["10.0.20.0/24", "10.0.21.0/24"]
@@ -122,7 +122,7 @@ resource "aws_route_table_association" "public" {
 }
 
 # ------------------------------------------------------------------------------
-# NAT Instance (Public 서브넷 1대, Private App 아웃바운드용)
+# NAT Instance (Public 서브넷 AZ당 1대, 총 2대. Private App 아웃바운드용)
 # ------------------------------------------------------------------------------
 
 resource "aws_security_group" "nat" {
@@ -154,10 +154,10 @@ resource "aws_security_group" "nat" {
 }
 
 resource "aws_instance" "nat" {
-  count         = var.enable_nat_instance ? 1 : 0
+  count         = var.enable_nat_instance ? 2 : 0
   ami           = var.nat_instance_ami_id
   instance_type = var.nat_instance_type
-  subnet_id     = aws_subnet.public[0].id
+  subnet_id     = aws_subnet.public[count.index].id
   key_name      = var.nat_instance_key_name
 
   vpc_security_group_ids = [aws_security_group.nat[0].id]
@@ -165,38 +165,47 @@ resource "aws_instance" "nat" {
 
   user_data = <<-EOT
     #!/bin/bash
-    set -e
+    set -e  # 명령 실패 시 즉시 종료
+
+    # NAT 기능을 위해 iptables 및 영구 저장 도구 설치
     apt-get update && apt-get install -y iptables netfilter-persistent
+
+    # Private 서브넷에서 나온 트래픽을 NAT해서 인터넷으로 내보냄
     iptables -t nat -A POSTROUTING -o ens5 -j MASQUERADE
+
+    # 재부팅 후에도 iptables 규칙 유지
     netfilter-persistent save
+
+    # 커널 IP 포워딩 활성화 (NAT 필수)
     sysctl -w net.ipv4.ip_forward=1
     echo 'net.ipv4.ip_forward=1' >> /etc/sysctl.d/99-nat.conf
   EOT
 
   tags = {
-    Name        = "${var.project}-${var.environment}-nat"
+    Name        = "${var.project}-${var.environment}-nat-${count.index}"
     Project     = var.project
     Environment = var.environment
   }
 }
 
 # ------------------------------------------------------------------------------
-# Route Table: Private App (NAT Instance 경유 아웃바운드)
+# Route Table: Private App (AZ별 1개, 각 AZ의 NAT Instance 경유 아웃바운드)
 # ------------------------------------------------------------------------------
 
 resource "aws_route_table" "private_app" {
+  count  = 2
   vpc_id = aws_vpc.main.id
 
   dynamic "route" {
     for_each = var.enable_nat_instance ? [1] : []
     content {
       cidr_block           = "0.0.0.0/0"
-      network_interface_id = aws_instance.nat[0].primary_network_interface_id
+      network_interface_id = aws_instance.nat[count.index].primary_network_interface_id
     }
   }
 
   tags = {
-    Name        = "${var.project}-${var.environment}-private-app-rt"
+    Name        = "${var.project}-${var.environment}-private-app-rt-${count.index}"
     Project     = var.project
     Environment = var.environment
   }
@@ -205,7 +214,7 @@ resource "aws_route_table" "private_app" {
 resource "aws_route_table_association" "private_app" {
   count          = length(aws_subnet.private_app)
   subnet_id      = aws_subnet.private_app[count.index].id
-  route_table_id = aws_route_table.private_app.id
+  route_table_id = aws_route_table.private_app[count.index].id
 }
 
 # ------------------------------------------------------------------------------
