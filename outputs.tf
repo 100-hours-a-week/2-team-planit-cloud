@@ -37,6 +37,11 @@ output "security_group_ids" {
   value       = module.security.security_group_ids
 }
 
+output "iam_role_names" {
+  description = "Security 모듈 IAM Role 이름 매핑"
+  value       = module.security.iam_role_names
+}
+
 # ------------------------------------------------------------------------------
 # Storage 모듈
 # ------------------------------------------------------------------------------

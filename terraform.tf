@@ -58,7 +58,15 @@ module "network" {
 module "security" {
   source = "./modules/security"
 
-  vpc_id = module.network.vpc_id
+  vpc_id      = module.network.vpc_id
+  project     = var.project
+  environment = var.environment
+
+  ec2_assume_role_service     = var.ec2_assume_role_service
+  ec2_ssm_managed_policy_arns = var.ec2_ssm_managed_policy_arns
+  ec2_ssm_inline_policy_json  = var.ec2_ssm_inline_policy_json
+  ec2_s3_managed_policy_arns  = var.ec2_s3_managed_policy_arns
+  ec2_s3_inline_policy_json   = var.ec2_s3_inline_policy_json
 }
 
 # ------------------------------------------------------------------------------
