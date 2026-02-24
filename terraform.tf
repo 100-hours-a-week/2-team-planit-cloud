@@ -12,13 +12,13 @@ terraform {
     }
   }
 
-  # Terraform Cloud 사용 시 아래 backend로 전환
-  # backend "remote" {
-  #   organization = "YOUR_ORG"
-  #   workspaces {
-  #     name = "planit-network"
-  #   }
-  # }
+  backend "remote" {
+    organization = "planit"
+
+    workspaces {
+      name = "2-team-planit-cloud"
+    }
+  }
 }
 
 provider "aws" {
