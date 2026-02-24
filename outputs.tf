@@ -1,0 +1,33 @@
+# ------------------------------------------------------------------------------
+# Network 모듈 출력 재노출
+# ------------------------------------------------------------------------------
+
+output "vpc_id" {
+  description = "VPC ID"
+  value       = module.network.vpc_id
+}
+
+output "public_subnet_ids" {
+  description = "Public 서브넷 ID 목록"
+  value       = module.network.public_subnet_ids
+}
+
+output "private_app_subnet_ids" {
+  description = "Private Application 서브넷 ID 목록"
+  value       = module.network.private_app_subnet_ids
+}
+
+output "private_db_subnet_ids" {
+  description = "Private Database 서브넷 ID 목록"
+  value       = module.network.private_db_subnet_ids
+}
+
+output "availability_zones" {
+  description = "사용 가용 영역"
+  value       = module.network.availability_zones
+}
+
+output "nat_instance_id" {
+  description = "NAT Instance ID"
+  value       = module.network.nat_instance_id
+}
