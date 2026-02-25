@@ -134,7 +134,254 @@ variable "db_data_volume_size_gb" {
   default     = 20
 }
 
-variable "cloudfront_oai_iam_arn" {
-  description = "CloudFront OAI IAM ARN (FE 버킷 GetObject 허용, 필수)"
+variable "cloudfront_s3_origin_path" {
+  description = "CloudFront S3 origin path"
   type        = string
+  default     = "/dist"
+}
+
+variable "cloudfront_aliases" {
+  description = "CloudFront Alternate Domain Names(CNAME) 목록"
+  type        = list(string)
+  default     = ["planit-ai.store"]
+}
+
+variable "cloudfront_acm_certificate_arn" {
+  description = "CloudFront용 ACM 인증서 ARN(us-east-1). 없으면 CloudFront 기본 인증서 사용"
+  type        = string
+  default     = "arn:aws:acm:us-east-1:713881824287:certificate/e7e79b39-1429-4534-8ae7-bcf6bdf237ae"
+}
+
+variable "cloudfront_minimum_protocol_version" {
+  description = "CloudFront 최소 TLS 버전"
+  type        = string
+  default     = "TLSv1.2_2021"
+}
+
+variable "cloudfront_price_class" {
+  description = "CloudFront 가격 등급"
+  type        = string
+  default     = "PriceClass_All"
+}
+
+variable "cloudfront_default_root_object" {
+  description = "CloudFront 기본 루트 객체"
+  type        = string
+  default     = "index.html"
+}
+
+variable "cloudfront_http_version" {
+  description = "CloudFront HTTP 버전"
+  type        = string
+  default     = "http2"
+}
+
+variable "route53_zone_name" {
+  description = "Route53 Public Hosted Zone 이름"
+  type        = string
+  default     = "planit-ai.store."
+}
+
+variable "route53_record_name" {
+  description = "Route53 레코드 이름"
+  type        = string
+  default     = "planit-ai.store"
+}
+
+variable "route53_set_identifier" {
+  description = "가중치 기반 라우팅 set_identifier"
+  type        = string
+  default     = "v2 fe cloudfront"
+}
+
+variable "route53_weight" {
+  description = "가중치 기반 라우팅 weight"
+  type        = number
+  default     = 255
+}
+
+variable "route53_evaluate_target_health" {
+  description = "Alias 대상 헬스체크 평가 여부"
+  type        = bool
+  default     = false
+}
+
+# ------------------------------------------------------------------------------
+# Compute 모듈 (WAS ASG)
+# ------------------------------------------------------------------------------
+
+variable "was_ami_id" {
+  description = "WAS 인스턴스용 AMI ID"
+  type        = string
+  default     = "ami-015c6c86e4847c159"
+}
+
+variable "was_instance_type" {
+  description = "WAS 인스턴스 타입"
+  type        = string
+  default     = "t4g.small"
+}
+
+variable "was_key_name" {
+  description = "WAS 인스턴스 SSH 키 페어 이름"
+  type        = string
+  default     = "planit-keypair"
+}
+
+variable "was_asg_min_size" {
+  description = "WAS ASG 최소 인스턴스 수"
+  type        = number
+  default     = 2
+}
+
+variable "was_asg_desired_capacity" {
+  description = "WAS ASG 희망 인스턴스 수"
+  type        = number
+  default     = 4
+}
+
+variable "was_asg_max_size" {
+  description = "WAS ASG 최대 인스턴스 수"
+  type        = number
+  default     = 4
+}
+
+variable "was_health_check_type" {
+  description = "WAS ASG 헬스체크 타입"
+  type        = string
+  default     = "ELB"
+}
+
+variable "was_health_check_grace_period" {
+  description = "WAS ASG 헬스체크 유예시간(초)"
+  type        = number
+  default     = 300
+}
+
+variable "was_user_data_base64" {
+  description = "WAS Launch Template user_data(base64). 없으면 null"
+  type        = string
+  default     = null
+}
+
+variable "was_iam_instance_profile_name" {
+  description = "WAS 인스턴스에 연결할 IAM Instance Profile 이름. 없으면 null"
+  type        = string
+  default     = "EC2-SSM-Role"
+}
+
+# ------------------------------------------------------------------------------
+# Compute 모듈 (AI ASG)
+# ------------------------------------------------------------------------------
+
+variable "ai_ami_id" {
+  description = "AI 인스턴스용 AMI ID"
+  type        = string
+  default     = "ami-015c6c86e4847c159"
+}
+
+variable "ai_instance_type" {
+  description = "AI 인스턴스 타입"
+  type        = string
+  default     = "t4g.small"
+}
+
+variable "ai_key_name" {
+  description = "AI 인스턴스 SSH 키 페어 이름"
+  type        = string
+  default     = "planit-keypair"
+}
+
+variable "ai_asg_min_size" {
+  description = "AI ASG 최소 인스턴스 수"
+  type        = number
+  default     = 1
+}
+
+variable "ai_asg_desired_capacity" {
+  description = "AI ASG 희망 인스턴스 수"
+  type        = number
+  default     = 1
+}
+
+variable "ai_asg_max_size" {
+  description = "AI ASG 최대 인스턴스 수"
+  type        = number
+  default     = 2
+}
+
+variable "ai_health_check_type" {
+  description = "AI ASG 헬스체크 타입"
+  type        = string
+  default     = "ELB"
+}
+
+variable "ai_health_check_grace_period" {
+  description = "AI ASG 헬스체크 유예시간(초)"
+  type        = number
+  default     = 300
+}
+
+variable "ai_user_data_base64" {
+  description = "AI Launch Template user_data(base64). 없으면 null"
+  type        = string
+  default     = null
+}
+
+variable "ai_iam_instance_profile_name" {
+  description = "AI 인스턴스에 연결할 IAM Instance Profile 이름. 없으면 null"
+  type        = string
+  default     = "EC2-SSM-Role"
+}
+
+# ------------------------------------------------------------------------------
+# Compute 모듈 (Chat EC2)
+# ------------------------------------------------------------------------------
+
+variable "chat_ami_id" {
+  description = "Chat 인스턴스용 AMI ID"
+  type        = string
+  default     = "ami-015c6c86e4847c159"
+}
+
+variable "chat_instance_type" {
+  description = "Chat 인스턴스 타입"
+  type        = string
+  default     = "t4g.small"
+}
+
+variable "chat_key_name" {
+  description = "Chat 인스턴스 SSH 키 페어 이름"
+  type        = string
+  default     = "planit-keypair"
+}
+
+variable "chat_iam_instance_profile_name" {
+  description = "Chat 인스턴스에 연결할 IAM Instance Profile 이름. 없으면 null"
+  type        = string
+  default     = "EC2-SSM-Role"
+}
+
+variable "chat_user_data_base64" {
+  description = "Chat 인스턴스 user_data(base64). 없으면 null"
+  type        = string
+  default     = null
+}
+
+variable "chat_root_volume_size_gb" {
+  description = "Chat 인스턴스 루트 볼륨 크기(GB)"
+  type        = number
+  default     = 30
+}
+
+variable "chat_root_volume_type" {
+  description = "Chat 인스턴스 루트 볼륨 타입"
+  type        = string
+  default     = "gp3"
+}
+
+variable "chat_root_volume_encrypted" {
+  description = "Chat 인스턴스 루트 볼륨 암호화 여부"
+  type        = bool
+  default     = true
 }

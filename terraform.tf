@@ -34,6 +34,14 @@ provider "aws" {
 }
 
 # ------------------------------------------------------------------------------
+# CloudFront OAI (신규 생성)
+# ------------------------------------------------------------------------------
+
+resource "aws_cloudfront_origin_access_identity" "this" {
+  comment = "${var.project}-${var.environment}-oai"
+}
+
+# ------------------------------------------------------------------------------
 # Network 모듈 호출
 # ------------------------------------------------------------------------------
 
@@ -85,5 +93,70 @@ module "storage" {
 
   db_root_volume_size_gb = var.db_root_volume_size_gb
   db_data_volume_size_gb = var.db_data_volume_size_gb
-  cloudfront_oai_iam_arn = var.cloudfront_oai_iam_arn
+  cloudfront_oai_iam_arn = aws_cloudfront_origin_access_identity.this.iam_arn
+}
+
+# ------------------------------------------------------------------------------
+# Compute 모듈 (WAS ASG)
+# ------------------------------------------------------------------------------
+
+module "compute" {
+  source = "./modules/compute"
+
+  environment = var.environment
+  project     = var.project
+
+  vpc_id                 = module.network.vpc_id
+  public_subnet_ids      = module.network.public_subnet_ids
+  private_app_subnet_ids = module.network.private_app_subnet_ids
+  alb_security_group_id  = module.security.security_group_ids.alb
+  was_security_group_id  = module.security.security_group_ids.be
+  ai_security_group_id   = module.security.security_group_ids.ai
+  cloudfront_s3_origin_domain_name = module.storage.fe_bucket_regional_domain_name
+  cloudfront_s3_origin_path        = var.cloudfront_s3_origin_path
+  cloudfront_oai_id                = aws_cloudfront_origin_access_identity.this.id
+  cloudfront_aliases               = var.cloudfront_aliases
+  cloudfront_acm_certificate_arn   = var.cloudfront_acm_certificate_arn
+  cloudfront_minimum_protocol_version = var.cloudfront_minimum_protocol_version
+  cloudfront_price_class              = var.cloudfront_price_class
+  cloudfront_default_root_object      = var.cloudfront_default_root_object
+  cloudfront_http_version             = var.cloudfront_http_version
+  route53_zone_name                   = var.route53_zone_name
+  route53_record_name                 = var.route53_record_name
+  route53_set_identifier              = var.route53_set_identifier
+  route53_weight                      = var.route53_weight
+  route53_evaluate_target_health      = var.route53_evaluate_target_health
+
+  was_ami_id                     = var.was_ami_id
+  was_instance_type              = var.was_instance_type
+  was_key_name                   = var.was_key_name
+  was_asg_min_size               = var.was_asg_min_size
+  was_asg_desired_capacity       = var.was_asg_desired_capacity
+  was_asg_max_size               = var.was_asg_max_size
+  was_health_check_type          = var.was_health_check_type
+  was_health_check_grace_period  = var.was_health_check_grace_period
+  was_user_data_base64           = var.was_user_data_base64
+  was_iam_instance_profile_name  = var.was_iam_instance_profile_name
+
+  ai_ami_id                     = var.ai_ami_id
+  ai_instance_type              = var.ai_instance_type
+  ai_key_name                   = var.ai_key_name
+  ai_asg_min_size               = var.ai_asg_min_size
+  ai_asg_desired_capacity       = var.ai_asg_desired_capacity
+  ai_asg_max_size               = var.ai_asg_max_size
+  ai_health_check_type          = var.ai_health_check_type
+  ai_health_check_grace_period  = var.ai_health_check_grace_period
+  ai_user_data_base64           = var.ai_user_data_base64
+  ai_iam_instance_profile_name  = var.ai_iam_instance_profile_name
+
+  chat_subnet_id                 = module.network.private_app_subnet_ids[0]
+  chat_security_group_id         = module.security.security_group_ids.be
+  chat_ami_id                    = var.chat_ami_id
+  chat_instance_type             = var.chat_instance_type
+  chat_key_name                  = var.chat_key_name
+  chat_iam_instance_profile_name = var.chat_iam_instance_profile_name
+  chat_user_data_base64          = var.chat_user_data_base64
+  chat_root_volume_size_gb       = var.chat_root_volume_size_gb
+  chat_root_volume_type          = var.chat_root_volume_type
+  chat_root_volume_encrypted     = var.chat_root_volume_encrypted
 }
