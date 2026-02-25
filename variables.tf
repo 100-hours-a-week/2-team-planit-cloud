@@ -68,28 +68,30 @@ variable "ec2_ssm_managed_policy_arns" {
 }
 
 variable "ec2_ssm_inline_policy_json" {
-  description = "EC2 SSM Role 인라인 정책(JSON 문자열). 없으면 null"
+  description = "EC2 SSM Role 인라인 정책(JSON 문자열). 기본값: ECR 로그인·풀 정책"
   type        = string
-  default = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Sid      = "ECRLogin"
-        Effect   = "Allow"
-        Action   = "ecr:GetAuthorizationToken"
-        Resource = "*"
-      },
-      {
-        Sid    = "ECRPull"
-        Effect = "Allow"
-        Action = [
-          "ecr:BatchGetImage",
-          "ecr:GetDownloadUrlForLayer",
-        ]
-        Resource = "arn:aws:ecr:ap-northeast-2:713881824287:repository/planit-was"
-      },
-    ]
-  })
+  default = <<-EOT
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ECRLogin",
+      "Effect": "Allow",
+      "Action": "ecr:GetAuthorizationToken",
+      "Resource": "*"
+    },
+    {
+      "Sid": "ECRPull",
+      "Effect": "Allow",
+      "Action": [
+        "ecr:BatchGetImage",
+        "ecr:GetDownloadUrlForLayer"
+      ],
+      "Resource": "arn:aws:ecr:ap-northeast-2:713881824287:repository/planit-was"
+    }
+  ]
+}
+EOT
 }
 
 variable "ec2_s3_managed_policy_arns" {
