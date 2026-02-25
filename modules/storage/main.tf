@@ -242,6 +242,8 @@ resource "aws_s3_bucket_lifecycle_configuration" "backup" {
     id     = "archive-and-expire"
     status = "Enabled"
 
+    filter {} # 전체 버킷 대상
+
     transition {
       days          = 7
       storage_class = "GLACIER_IR"
