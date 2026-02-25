@@ -51,6 +51,11 @@ output "fe_bucket_arn" {
   value       = aws_s3_bucket.fe.arn
 }
 
+output "fe_bucket_regional_domain_name" {
+  description = "FE/업로드용 S3 버킷 Regional Domain Name"
+  value       = aws_s3_bucket.fe.bucket_regional_domain_name
+}
+
 output "backup_bucket_name" {
   description = "DB 백업용 S3 버킷 이름"
   value       = aws_s3_bucket.backup.id
