@@ -1,155 +1,162 @@
 # ------------------------------------------------------------------------------
-# 루트 변수 (모듈에 전달)
+# 공통 (root에서 전달)
 # ------------------------------------------------------------------------------
 
 variable "environment" {
-  description = "환경 (dev, prod)"
+  description = "환경 이름"
   type        = string
-  default     = "prod"
 }
 
 variable "project" {
   description = "프로젝트 이름"
   type        = string
-  default     = "planit"
 }
 
-variable "region" {
-  description = "AWS 리전"
+# ------------------------------------------------------------------------------
+# ALB
+# ------------------------------------------------------------------------------
+
+variable "vpc_id" {
+  description = "ALB/TG가 생성될 VPC ID"
   type        = string
-  default     = "ap-northeast-2"
 }
 
-variable "vpc_cidr" {
-  description = "VPC CIDR"
+variable "public_subnet_ids" {
+  description = "ALB가 배치될 Public 서브넷 ID 목록"
+  type        = list(string)
+}
+
+variable "alb_security_group_id" {
+  description = "ALB에 적용할 보안그룹 ID"
   type        = string
-  default     = "10.0.0.0/16"
 }
 
-variable "enable_nat_instance" {
-  description = "NAT Instance 생성 여부"
+variable "alb_internal" {
+  description = "ALB internal 여부"
   type        = bool
-  default     = true
+  default     = false
 }
 
-variable "nat_instance_type" {
-  description = "NAT Instance 인스턴스 타입"
+variable "alb_idle_timeout" {
+  description = "ALB idle timeout(초)"
+  type        = number
+  default     = 60
+}
+
+variable "alb_enable_deletion_protection" {
+  description = "ALB 삭제 보호 활성화 여부"
+  type        = bool
+  default     = false
+}
+
+variable "was_target_group_port" {
+  description = "WAS Target Group 포트"
+  type        = number
+  default     = 8080
+}
+
+variable "ai_target_group_port" {
+  description = "AI Target Group 포트"
+  type        = number
+  default     = 8000
+}
+
+variable "chat_target_group_port" {
+  description = "Chat Target Group 포트"
+  type        = number
+  default     = 8081
+}
+
+variable "was_target_group_health_check_path" {
+  description = "WAS Target Group 헬스체크 경로"
   type        = string
-  default     = "t4g.micro"
+  default     = "/api/health"
 }
 
-variable "nat_instance_ami_id" {
-  description = "NAT Instance AMI ID"
+variable "ai_target_group_health_check_path" {
+  description = "AI Target Group 헬스체크 경로"
   type        = string
-  default     = "ami-04f06fb5ae9dcc778"
+  default     = "/health"
 }
 
-variable "nat_instance_key_name" {
-  description = "NAT Instance SSH 키 페어 이름"
+variable "chat_target_group_health_check_path" {
+  description = "Chat Target Group 헬스체크 경로"
   type        = string
-  default     = "planit-keypair"
+  default     = "/api/health"
 }
 
-variable "ec2_assume_role_service" {
-  description = "EC2 Role의 AssumeRole 서비스 주체"
+variable "target_group_health_check_matcher" {
+  description = "Target Group 헬스체크 응답코드 matcher"
   type        = string
-  default     = "ec2.amazonaws.com"
+  default     = "200-399"
 }
 
-variable "ec2_ssm_managed_policy_arns" {
-  description = "EC2 SSM Role에 부착할 관리형 정책 ARN 목록"
+variable "chat_listener_path_patterns" {
+  description = "HTTP 80 리스너에서 Chat TG로 라우팅할 path pattern 목록"
   type        = list(string)
-  default = [
-    "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly",
-    "arn:aws:iam::aws:policy/AmazonS3FullAccess",
-    "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore",
-    "arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy",
-  ]
+  default     = ["/api/ws/*"]
 }
 
-variable "ec2_ssm_inline_policy_json" {
-  description = "EC2 SSM Role 인라인 정책(JSON 문자열). 기본값: ECR 로그인·풀 정책"
-  type        = string
-  default = <<-EOT
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Sid": "ECRLogin",
-      "Effect": "Allow",
-      "Action": "ecr:GetAuthorizationToken",
-      "Resource": "*"
-    },
-    {
-      "Sid": "ECRPull",
-      "Effect": "Allow",
-      "Action": [
-        "ecr:BatchGetImage",
-        "ecr:GetDownloadUrlForLayer"
-      ],
-      "Resource": "arn:aws:ecr:ap-northeast-2:713881824287:repository/planit-was"
-    }
-  ]
-}
-EOT
-}
-
-variable "ec2_s3_managed_policy_arns" {
-  description = "EC2 S3 Role에 부착할 관리형 정책 ARN 목록"
+variable "was_listener_path_patterns" {
+  description = "HTTP 80 리스너에서 WAS TG로 라우팅할 path pattern 목록"
   type        = list(string)
-  default     = ["arn:aws:iam::aws:policy/AmazonS3FullAccess"]
+  default     = ["/api/*"]
 }
 
-variable "ec2_s3_inline_policy_json" {
-  description = "EC2 S3 Role 인라인 정책(JSON 문자열). 없으면 null"
-  type        = string
-  default     = null
+variable "ai_listener_path_patterns" {
+  description = "HTTP 80 리스너에서 AI TG로 라우팅할 path pattern 목록"
+  type        = list(string)
+  default     = ["/ai/*"]
+}
+
+variable "chat_listener_rule_priority" {
+  description = "Chat 리스너 규칙 우선순위"
+  type        = number
+  default     = 1
+}
+
+variable "was_listener_rule_priority" {
+  description = "WAS 리스너 규칙 우선순위"
+  type        = number
+  default     = 2
+}
+
+variable "ai_listener_rule_priority" {
+  description = "AI 리스너 규칙 우선순위"
+  type        = number
+  default     = 3
 }
 
 # ------------------------------------------------------------------------------
-# Storage 모듈
+# CloudFront
 # ------------------------------------------------------------------------------
 
-variable "db_ami_id" {
-  description = "DB EC2 AMI ID (NAT와 동일 권장)"
+variable "cloudfront_s3_origin_domain_name" {
+  description = "CloudFront S3 Origin Domain Name (예: bucket.s3.ap-northeast-2.amazonaws.com)"
   type        = string
-  default     = "ami-04f06fb5ae9dcc778"
-}
-
-variable "db_key_name" {
-  description = "DB EC2 SSH 키 페어 이름"
-  type        = string
-  default     = "planit-keypair"
-}
-
-variable "db_root_volume_size_gb" {
-  description = "DB EC2 Root 볼륨 크기(GB)"
-  type        = number
-  default     = 10
-}
-
-variable "db_data_volume_size_gb" {
-  description = "DB EC2 데이터 EBS 볼륨 크기(GB)"
-  type        = number
-  default     = 20
 }
 
 variable "cloudfront_s3_origin_path" {
-  description = "CloudFront S3 origin path"
+  description = "CloudFront S3 Origin Path"
   type        = string
   default     = "/dist"
+}
+
+variable "cloudfront_oai_id" {
+  description = "CloudFront Origin Access Identity ID"
+  type        = string
 }
 
 variable "cloudfront_aliases" {
   description = "CloudFront Alternate Domain Names(CNAME) 목록"
   type        = list(string)
-  default     = ["planit-ai.store"]
+  default     = []
 }
 
 variable "cloudfront_acm_certificate_arn" {
-  description = "CloudFront용 ACM 인증서 ARN(us-east-1). 없으면 CloudFront 기본 인증서 사용"
+  description = "CloudFront용 ACM 인증서 ARN(us-east-1). 없으면 기본 인증서 사용"
   type        = string
-  default     = "arn:aws:acm:us-east-1:713881824287:certificate/e7e79b39-1429-4534-8ae7-bcf6bdf237ae"
+  default     = null
 }
 
 variable "cloudfront_minimum_protocol_version" {
@@ -176,6 +183,10 @@ variable "cloudfront_http_version" {
   default     = "http2"
 }
 
+# ------------------------------------------------------------------------------
+# Route53
+# ------------------------------------------------------------------------------
+
 variable "route53_zone_name" {
   description = "Route53 Public Hosted Zone 이름"
   type        = string
@@ -183,7 +194,7 @@ variable "route53_zone_name" {
 }
 
 variable "route53_record_name" {
-  description = "Route53 레코드 이름"
+  description = "Route53 레코드 이름(apex는 도메인과 동일)"
   type        = string
   default     = "planit-ai.store"
 }
@@ -207,13 +218,22 @@ variable "route53_evaluate_target_health" {
 }
 
 # ------------------------------------------------------------------------------
-# Compute 모듈 (WAS ASG)
+# WAS ASG
 # ------------------------------------------------------------------------------
+
+variable "private_app_subnet_ids" {
+  description = "애플리케이션 ASG가 배치될 Private App 서브넷 ID 목록"
+  type        = list(string)
+}
+
+variable "was_security_group_id" {
+  description = "WAS 인스턴스에 적용할 보안그룹 ID"
+  type        = string
+}
 
 variable "was_ami_id" {
   description = "WAS 인스턴스용 AMI ID"
   type        = string
-  default     = "ami-015c6c86e4847c159"
 }
 
 variable "was_instance_type" {
@@ -247,7 +267,7 @@ variable "was_asg_max_size" {
 }
 
 variable "was_health_check_type" {
-  description = "WAS ASG 헬스체크 타입"
+  description = "WAS ASG 헬스체크 타입 (EC2 또는 ELB)"
   type        = string
   default     = "ELB"
 }
@@ -259,7 +279,7 @@ variable "was_health_check_grace_period" {
 }
 
 variable "was_user_data_base64" {
-  description = "WAS Launch Template user_data(base64). 없으면 null"
+  description = "WAS Launch Template user_data (base64 인코딩 문자열). 없으면 null"
   type        = string
   default     = null
 }
@@ -267,17 +287,21 @@ variable "was_user_data_base64" {
 variable "was_iam_instance_profile_name" {
   description = "WAS 인스턴스에 연결할 IAM Instance Profile 이름. 없으면 null"
   type        = string
-  default     = "EC2-SSM-Role"
+  default     = null
 }
 
 # ------------------------------------------------------------------------------
-# Compute 모듈 (AI ASG)
+# AI ASG
 # ------------------------------------------------------------------------------
+
+variable "ai_security_group_id" {
+  description = "AI 인스턴스에 적용할 보안그룹 ID"
+  type        = string
+}
 
 variable "ai_ami_id" {
   description = "AI 인스턴스용 AMI ID"
   type        = string
-  default     = "ami-015c6c86e4847c159"
 }
 
 variable "ai_instance_type" {
@@ -311,7 +335,7 @@ variable "ai_asg_max_size" {
 }
 
 variable "ai_health_check_type" {
-  description = "AI ASG 헬스체크 타입"
+  description = "AI ASG 헬스체크 타입 (EC2 또는 ELB)"
   type        = string
   default     = "ELB"
 }
@@ -323,7 +347,7 @@ variable "ai_health_check_grace_period" {
 }
 
 variable "ai_user_data_base64" {
-  description = "AI Launch Template user_data(base64). 없으면 null"
+  description = "AI Launch Template user_data (base64 인코딩 문자열). 없으면 null"
   type        = string
   default     = null
 }
@@ -331,17 +355,26 @@ variable "ai_user_data_base64" {
 variable "ai_iam_instance_profile_name" {
   description = "AI 인스턴스에 연결할 IAM Instance Profile 이름. 없으면 null"
   type        = string
-  default     = "EC2-SSM-Role"
+  default     = null
 }
 
 # ------------------------------------------------------------------------------
-# Compute 모듈 (Chat EC2)
+# Chat EC2
 # ------------------------------------------------------------------------------
+
+variable "chat_subnet_id" {
+  description = "Chat 인스턴스가 배치될 서브넷 ID"
+  type        = string
+}
+
+variable "chat_security_group_id" {
+  description = "Chat 인스턴스에 적용할 보안그룹 ID"
+  type        = string
+}
 
 variable "chat_ami_id" {
   description = "Chat 인스턴스용 AMI ID"
   type        = string
-  default     = "ami-015c6c86e4847c159"
 }
 
 variable "chat_instance_type" {
@@ -359,11 +392,11 @@ variable "chat_key_name" {
 variable "chat_iam_instance_profile_name" {
   description = "Chat 인스턴스에 연결할 IAM Instance Profile 이름. 없으면 null"
   type        = string
-  default     = "EC2-SSM-Role"
+  default     = null
 }
 
 variable "chat_user_data_base64" {
-  description = "Chat 인스턴스 user_data(base64). 없으면 null"
+  description = "Chat 인스턴스 user_data (base64 인코딩 문자열). 없으면 null"
   type        = string
   default     = null
 }
