@@ -13,25 +13,24 @@ import { check, sleep } from 'k6';
    - 콘솔 로그(console.log): --console-output
    - k6 엔진 로그: --log-output
    - 요약 리포트(JSON): --summary-export
-   - 터미널 전체 출력(요약 텍스트 포함): tee
+   - run.log(tee)는 생략 (가독성 이슈가 있으면 보통 생략)
 
    mkdir -p k6/logs
-   TS=$(date +%Y%m%d_%H%M%S)
+   STAMP=$(date +%Y%m%d_%H%M%S)
    LOGIN_ID='test123' LOGIN_PASSWORD='Test123!' \
    k6 run k6/rolling-check.js \
-     --console-output "k6/logs/console_${TS}.log" \
-     --log-output "file=k6/logs/k6_${TS}.log" \
-     --summary-export "k6/logs/summary_${TS}.json" \
-     2>&1 | tee "k6/logs/run_${TS}.log"
+     --console-output "k6/logs/console_${STAMP}.log" \
+     --log-output "file=k6/logs/k6_${STAMP}.log" \
+     --summary-export "k6/logs/summary_${STAMP}.json"
 
 3) 부하 더 낮추기 (예: 30초 간격)
+   STAMP=$(date +%Y%m%d_%H%M%S)
    LOGIN_ID='test123' LOGIN_PASSWORD='Test123!' \
    INTERVAL_SEC=30 DURATION=20m \
    k6 run k6/rolling-check.js \
-     --console-output "k6/logs/console_${TS}.log" \
-     --log-output "file=k6/logs/k6_${TS}.log" \
-     --summary-export "k6/logs/summary_${TS}.json" \
-     2>&1 | tee "k6/logs/run_${TS}.log"
+     --console-output "k6/logs/console_${STAMP}.log" \
+     --log-output "file=k6/logs/k6_${STAMP}.log" \
+     --summary-export "k6/logs/summary_${STAMP}.json"
 
 환경변수 설명
 - BASE_URL: 대상 서버 주소 (기본: https://planit-ai.store)
