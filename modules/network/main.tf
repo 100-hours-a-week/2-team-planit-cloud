@@ -44,10 +44,11 @@ resource "aws_internet_gateway" "main" {
 locals {
   azs = slice(data.aws_availability_zones.available.names, 0, 2)
 
-  # CIDR 블록
-  public_cidrs      = ["10.0.2.0/24", "10.0.3.0/24"]
-  private_app_cidrs  = ["10.0.10.0/24", "10.0.11.0/24"]
-  private_db_cidrs   = ["10.0.20.0/24", "10.0.21.0/24"]
+  # VPC CIDR 내 서브넷 (vpc_cidr에 따라 자동 계산 — 운영 10.0.0.0/16과 분리 시 10.1.0.0/16 사용)
+  # cidrsubnet(prefix, newbits, netnum): prefix를 newbits만큼 확장한 서브넷들 중 netnum번째 CIDR을 반환 (예: 10.1.0.0/16, 8, 2 → 10.1.2.0/24)
+  public_cidrs      = [cidrsubnet(var.vpc_cidr, 8, 2), cidrsubnet(var.vpc_cidr, 8, 3)]
+  private_app_cidrs  = [cidrsubnet(var.vpc_cidr, 8, 10), cidrsubnet(var.vpc_cidr, 8, 11)]
+  private_db_cidrs   = [cidrsubnet(var.vpc_cidr, 8, 20), cidrsubnet(var.vpc_cidr, 8, 21)]
 }
 
 # Public

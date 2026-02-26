@@ -21,9 +21,9 @@ variable "region" {
 }
 
 variable "vpc_cidr" {
-  description = "VPC CIDR"
+  description = "VPC IPv4 CIDR. 운영(prod)은 10.0.0.0/16, 테스트/IaC 검증용은 10.1.0.0/16 등으로 분리 권장."
   type        = string
-  default     = "10.0.0.0/16"
+  default     = "10.1.0.0/16"
 }
 
 variable "enable_nat_instance" {
