@@ -92,7 +92,3 @@ variable "backup_bucket_name" {
   default     = "planit-db-backup"
 }
 
-variable "cloudfront_oai_iam_arn" {
-  description = "CloudFront OAI IAM ARN (FE 버킷 GetObject 허용)"
-  type        = string
-}

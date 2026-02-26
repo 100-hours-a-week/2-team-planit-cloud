@@ -176,6 +176,31 @@ variable "cloudfront_http_version" {
   default     = "http2"
 }
 
+# 이미지 업로드 S3 오리진 (항상 생성)
+variable "cloudfront_s3_image_origin_domain_name" {
+  description = "이미지 업로드 S3 버킷 Regional Domain Name (예: planit-s3-bucket.s3.ap-northeast-2.amazonaws.com). null이면 기본값 사용."
+  type        = string
+  default     = "planit-s3-bucket.s3.ap-northeast-2.amazonaws.com"
+}
+
+variable "cloudfront_image_path_patterns" {
+  description = "이미지 S3 오리진으로 라우팅할 path pattern 목록 (예: [\"/profile/*\", \"/post/*\"])"
+  type        = list(string)
+  default     = ["/profile/*", "/post/*"]
+}
+
+variable "image_bucket_name" {
+  description = "이미지 업로드 S3 버킷 이름 (정책·CORS 관리 대상)"
+  type        = string
+  default     = "planit-s3-bucket"
+}
+
+variable "image_bucket_cors_origins" {
+  description = "이미지 S3 버킷 CORS AllowedOrigins"
+  type        = list(string)
+  default     = ["http://localhost:5173", "http://localhost:3000", "https://planit-ai.store", "https://www.planit-ai.store", "https://d1e7kkp6huat07.cloudfront.net"]
+}
+
 variable "route53_zone_name" {
   description = "Route53 Public Hosted Zone 이름"
   type        = string
