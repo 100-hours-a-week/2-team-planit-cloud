@@ -174,23 +174,7 @@ resource "aws_s3_bucket_public_access_block" "fe" {
   restrict_public_buckets = true
 }
 
-# CloudFront OAI에만 GetObject 허용
-resource "aws_s3_bucket_policy" "fe" {
-  bucket = aws_s3_bucket.fe.id
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Sid       = "AllowCloudFrontOAI"
-        Effect    = "Allow"
-        Principal = { AWS = var.cloudfront_oai_iam_arn }
-        Action    = "s3:GetObject"
-        Resource  = "${aws_s3_bucket.fe.arn}/*"
-      }
-    ]
-  })
-}
+# FE 버킷 정책은 루트에서 CloudFront 배포 ARN으로 설정 (terraform.tf의 aws_s3_bucket_policy.fe)
 
 # ------------------------------------------------------------------------------
 # S3: DB 백업용 버킷 (planit-db-backup)

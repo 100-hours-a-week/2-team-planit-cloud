@@ -183,6 +183,19 @@ variable "cloudfront_http_version" {
   default     = "http2"
 }
 
+# 이미지 업로드용 S3 오리진
+variable "cloudfront_s3_image_origin_domain_name" {
+  description = "이미지 업로드 S3 버킷 Regional Domain Name (예: planit-s3-bucket.s3.ap-northeast-2.amazonaws.com). 해당 버킷 정책에 동일 OAI GetObject 허용 필요."
+  type        = string
+  default     = "planit-s3-bucket.s3.ap-northeast-2.amazonaws.com"
+}
+
+variable "cloudfront_image_path_patterns" {
+  description = "이미지 S3 오리진으로 라우팅할 path pattern 목록 (우선순위 순: /profile/*, /post/*)"
+  type        = list(string)
+  default     = ["/profile/*", "/post/*"]
+}
+
 # ------------------------------------------------------------------------------
 # Route53
 # ------------------------------------------------------------------------------

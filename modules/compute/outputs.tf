@@ -83,6 +83,11 @@ output "cloudfront_distribution_id" {
   value       = aws_cloudfront_distribution.app.id
 }
 
+output "cloudfront_distribution_arn" {
+  description = "CloudFront Distribution ARN (S3 버킷 정책 Condition 등에서 사용)"
+  value       = aws_cloudfront_distribution.app.arn
+}
+
 output "cloudfront_domain_name" {
   description = "CloudFront Domain Name"
   value       = aws_cloudfront_distribution.app.domain_name

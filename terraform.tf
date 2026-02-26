@@ -93,7 +93,6 @@ module "storage" {
 
   db_root_volume_size_gb = var.db_root_volume_size_gb
   db_data_volume_size_gb = var.db_data_volume_size_gb
-  cloudfront_oai_iam_arn = aws_cloudfront_origin_access_identity.this.iam_arn
 }
 
 # ------------------------------------------------------------------------------
@@ -121,6 +120,8 @@ module "compute" {
   cloudfront_price_class              = var.cloudfront_price_class
   cloudfront_default_root_object      = var.cloudfront_default_root_object
   cloudfront_http_version             = var.cloudfront_http_version
+  cloudfront_s3_image_origin_domain_name = var.cloudfront_s3_image_origin_domain_name
+  cloudfront_image_path_patterns      = var.cloudfront_image_path_patterns
   route53_zone_name                   = var.route53_zone_name
   route53_record_name                 = var.route53_record_name
   route53_set_identifier              = var.route53_set_identifier
@@ -159,4 +160,118 @@ module "compute" {
   chat_root_volume_size_gb       = var.chat_root_volume_size_gb
   chat_root_volume_type          = var.chat_root_volume_type
   chat_root_volume_encrypted     = var.chat_root_volume_encrypted
+}
+
+# ------------------------------------------------------------------------------
+# 데이터 소스 (계정 ID 등)
+# ------------------------------------------------------------------------------
+
+data "aws_caller_identity" "current" {}
+
+# ------------------------------------------------------------------------------
+# FE S3 버킷 정책 (CloudFront 배포 ARN 방식 — 이미지와 동일)
+# ------------------------------------------------------------------------------
+
+resource "aws_s3_bucket_policy" "fe" {
+  bucket = module.storage.fe_bucket_name
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Id      = "PolicyForCloudFrontPrivateContent"
+    Statement = [
+      {
+        Sid       = "AllowCloudFrontServicePrincipal"
+        Effect    = "Allow"
+        Principal = { Service = "cloudfront.amazonaws.com" }
+        Action    = "s3:GetObject"
+        Resource  = "arn:aws:s3:::${module.storage.fe_bucket_name}/*"
+        Condition = {
+          StringEquals = {
+            "AWS:SourceArn" = module.compute.cloudfront_distribution_arn
+          }
+        }
+      },
+      {
+        Sid       = "AllowCloudFrontOAI"
+        Effect    = "Allow"
+        Principal = { AWS = aws_cloudfront_origin_access_identity.this.iam_arn }
+        Action    = "s3:GetObject"
+        Resource  = "arn:aws:s3:::${module.storage.fe_bucket_name}/*"
+      }
+    ]
+  })
+}
+
+# ------------------------------------------------------------------------------
+# 이미지 업로드 S3 버킷 (planit-s3-bucket) — 기존 버킷 정책·CORS 관리
+# ------------------------------------------------------------------------------
+
+data "aws_s3_bucket" "image" {
+  bucket = var.image_bucket_name
+}
+
+resource "aws_s3_bucket_policy" "image" {
+  bucket = data.aws_s3_bucket.image.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid       = "AllowCloudFront"
+        Effect    = "Allow"
+        Principal = { Service = "cloudfront.amazonaws.com" }
+        Action    = "s3:GetObject"
+        Resource  = "${data.aws_s3_bucket.image.arn}/*"
+        Condition = {
+          ArnLike = {
+            "AWS:SourceArn" = module.compute.cloudfront_distribution_arn
+          }
+        }
+      },
+      {
+        Sid       = "AllowCloudFrontOAI"
+        Effect    = "Allow"
+        Principal = { AWS = aws_cloudfront_origin_access_identity.this.iam_arn }
+        Action    = "s3:GetObject"
+        Resource  = "${data.aws_s3_bucket.image.arn}/*"
+      },
+      {
+        Sid       = "AllowIAMUserOrRole"
+        Effect    = "Allow"
+        Principal = { AWS = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:user/planit-s3" }
+        Action    = ["s3:GetObject", "s3:PutObject"]
+        Resource  = "${data.aws_s3_bucket.image.arn}/*"
+      },
+      {
+        Sid       = "AllowEC2RoleAccess"
+        Effect    = "Allow"
+        Principal = { AWS = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/Planit-EC2-S3-Role" }
+        Action    = ["s3:GetObject", "s3:PutObject"]
+        Resource  = "${data.aws_s3_bucket.image.arn}/*"
+      },
+      {
+        Sid       = "AllowCloudFrontServicePrincipal"
+        Effect    = "Allow"
+        Principal = { Service = "cloudfront.amazonaws.com" }
+        Action    = "s3:GetObject"
+        Resource  = "${data.aws_s3_bucket.image.arn}/*"
+        Condition = {
+          StringEquals = {
+            "AWS:SourceArn" = module.compute.cloudfront_distribution_arn
+          }
+        }
+      }
+    ]
+  })
+}
+
+resource "aws_s3_bucket_cors_configuration" "image" {
+  bucket = data.aws_s3_bucket.image.id
+
+  cors_rule {
+    allowed_headers = ["*"]
+    allowed_methods = ["GET", "PUT", "POST", "HEAD"]
+    allowed_origins = var.image_bucket_cors_origins
+    expose_headers  = ["ETag"]
+  }
 }

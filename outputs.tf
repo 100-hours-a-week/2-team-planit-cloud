@@ -159,6 +159,11 @@ output "cloudfront_distribution_id" {
   value       = module.compute.cloudfront_distribution_id
 }
 
+output "cloudfront_distribution_arn" {
+  description = "CloudFront Distribution ARN (S3 버킷 정책 등에서 참조)"
+  value       = module.compute.cloudfront_distribution_arn
+}
+
 output "cloudfront_domain_name" {
   description = "CloudFront Domain Name"
   value       = module.compute.cloudfront_domain_name

@@ -180,6 +180,7 @@ resource "aws_cloudfront_distribution" "app" {
   # CloudFront alias는 ACM 인증서(us-east-1)가 있을 때만 활성화
   aliases = var.cloudfront_acm_certificate_arn == null ? [] : var.cloudfront_aliases
 
+  # 1) S3 오리진 (프론트 정적 파일) — planit-v2-fe-s3-bucket
   origin {
     domain_name = var.cloudfront_s3_origin_domain_name
     origin_id   = "s3-fe-origin"
@@ -190,6 +191,7 @@ resource "aws_cloudfront_distribution" "app" {
     }
   }
 
+  # 2) ALB 오리진 (API / ai 등)
   origin {
     domain_name = aws_lb.app.dns_name
     origin_id   = "alb-app-origin"
@@ -202,6 +204,18 @@ resource "aws_cloudfront_distribution" "app" {
     }
   }
 
+  # 3) 이미지 업로드 S3 오리진 (planit-s3-bucket)
+  origin {
+    domain_name = var.cloudfront_s3_image_origin_domain_name
+    origin_id   = "s3-image-origin"
+    origin_path = ""
+
+    s3_origin_config {
+      origin_access_identity = "origin-access-identity/cloudfront/${var.cloudfront_oai_id}"
+    }
+  }
+
+  # 동작 1: /api/* → ALB, 캐시 끔, AllViewer
   ordered_cache_behavior {
     path_pattern           = "/api/*"
     target_origin_id       = "alb-app-origin"
@@ -213,6 +227,7 @@ resource "aws_cloudfront_distribution" "app" {
     compress               = true
   }
 
+  # 동작 2: /ai/* → ALB, 캐시 끔, AllViewer, 캐시 끔, AllViewer
   ordered_cache_behavior {
     path_pattern           = "/ai/*"
     target_origin_id       = "alb-app-origin"
@@ -224,6 +239,21 @@ resource "aws_cloudfront_distribution" "app" {
     compress               = true
   }
 
+  # 동작 3·4: /profile/*, /post/* → 이미지 S3(planit-s3-bucket), CachingOptimized
+  dynamic "ordered_cache_behavior" {
+    for_each = var.cloudfront_image_path_patterns
+    content {
+      path_pattern           = ordered_cache_behavior.value
+      target_origin_id       = "s3-image-origin"
+      viewer_protocol_policy = "redirect-to-https"
+      allowed_methods        = ["GET", "HEAD", "OPTIONS"]
+      cached_methods         = ["GET", "HEAD", "OPTIONS"]
+      cache_policy_id        = data.aws_cloudfront_cache_policy.managed_caching_optimized.id
+      compress               = true
+    }
+  }
+
+  # 동작 5(기본): * → FE S3(planit-v2-fe-s3-bucket), CachingOptimized, HTTP 및 HTTPS 허용
   default_cache_behavior {
     target_origin_id       = "s3-fe-origin"
     viewer_protocol_policy = "allow-all"
