@@ -157,148 +157,20 @@ resource "aws_lb_listener_rule" "ai_path" {
   }
 }
 
-data "aws_cloudfront_cache_policy" "managed_caching_disabled" {
-  name = "Managed-CachingDisabled"
-}
-
-data "aws_cloudfront_cache_policy" "managed_caching_optimized" {
-  name = "Managed-CachingOptimized"
-}
-
-data "aws_cloudfront_origin_request_policy" "managed_all_viewer" {
-  name = "Managed-AllViewer"
-}
-
-resource "aws_cloudfront_distribution" "app" {
-  enabled             = true
-  is_ipv6_enabled     = true
-  comment             = "${var.project}-${var.environment}-cloudfront"
-  default_root_object = var.cloudfront_default_root_object
-  price_class         = var.cloudfront_price_class
-  http_version        = var.cloudfront_http_version
-
-  # CloudFront alias는 ACM 인증서(us-east-1)가 있을 때만 활성화
-  aliases = var.cloudfront_acm_certificate_arn == null ? [] : var.cloudfront_aliases
-
-  # 1) S3 오리진 (프론트 정적 파일)
-  origin {
-    domain_name = var.cloudfront_s3_origin_domain_name
-    origin_id   = "s3-fe-origin"
-    origin_path = var.cloudfront_s3_origin_path
-
-    s3_origin_config {
-      origin_access_identity = "origin-access-identity/cloudfront/${var.cloudfront_oai_id}"
-    }
-  }
-
-  # 2) ALB 오리진 (API / ai 등)
-  origin {
-    domain_name = aws_lb.app.dns_name
-    origin_id   = "alb-app-origin"
-
-    custom_origin_config {
-      http_port              = 80
-      https_port             = 443
-      origin_protocol_policy = "http-only"
-      origin_ssl_protocols   = ["TLSv1.2"]
-    }
-  }
-
-  # 3) 이미지 업로드 S3 오리진 (planit-s3-bucket)
-  origin {
-    domain_name = var.cloudfront_s3_image_origin_domain_name
-    origin_id   = "s3-image-origin"
-    origin_path = ""
-
-    s3_origin_config {
-      origin_access_identity = "origin-access-identity/cloudfront/${var.cloudfront_oai_id}"
-    }
-  }
-
-  # 동작 1: /api/* → ALB, 캐시 끔, AllViewer
-  ordered_cache_behavior {
-    path_pattern           = "/api/*"
-    target_origin_id       = "alb-app-origin"
-    viewer_protocol_policy = "redirect-to-https"
-    allowed_methods        = ["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"]
-    cached_methods         = ["GET", "HEAD", "OPTIONS"]
-    cache_policy_id        = data.aws_cloudfront_cache_policy.managed_caching_disabled.id
-    origin_request_policy_id = data.aws_cloudfront_origin_request_policy.managed_all_viewer.id
-    compress               = true
-  }
-
-  # 동작 2: /ai/* → ALB, 캐시 끔, AllViewer, 캐시 끔, AllViewer
-  ordered_cache_behavior {
-    path_pattern           = "/ai/*"
-    target_origin_id       = "alb-app-origin"
-    viewer_protocol_policy = "redirect-to-https"
-    allowed_methods        = ["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"]
-    cached_methods         = ["GET", "HEAD", "OPTIONS"]
-    cache_policy_id        = data.aws_cloudfront_cache_policy.managed_caching_disabled.id
-    origin_request_policy_id = data.aws_cloudfront_origin_request_policy.managed_all_viewer.id
-    compress               = true
-  }
-
-  # 동작 3·4: /profile/*, /post/* → 이미지 S3(planit-s3-bucket), CachingOptimized
-  dynamic "ordered_cache_behavior" {
-    for_each = var.cloudfront_image_path_patterns
-    content {
-      path_pattern           = ordered_cache_behavior.value
-      target_origin_id       = "s3-image-origin"
-      viewer_protocol_policy = "redirect-to-https"
-      allowed_methods        = ["GET", "HEAD", "OPTIONS"]
-      cached_methods         = ["GET", "HEAD", "OPTIONS"]
-      cache_policy_id        = data.aws_cloudfront_cache_policy.managed_caching_optimized.id
-      compress               = true
-    }
-  }
-
-  # 동작 5(기본): * → FE S3, CachingOptimized, HTTP 및 HTTPS 허용
-  default_cache_behavior {
-    target_origin_id       = "s3-fe-origin"
-    viewer_protocol_policy = "allow-all"
-    allowed_methods        = ["GET", "HEAD", "OPTIONS"]
-    cached_methods         = ["GET", "HEAD", "OPTIONS"]
-    cache_policy_id        = data.aws_cloudfront_cache_policy.managed_caching_optimized.id
-    compress               = true
-  }
-
-  restrictions {
-    geo_restriction {
-      restriction_type = "none"
-    }
-  }
-
-  dynamic "viewer_certificate" {
-    for_each = var.cloudfront_acm_certificate_arn == null ? [] : [1]
-    content {
-      acm_certificate_arn      = var.cloudfront_acm_certificate_arn
-      ssl_support_method       = "sni-only"
-      minimum_protocol_version = var.cloudfront_minimum_protocol_version
-    }
-  }
-
-  dynamic "viewer_certificate" {
-    for_each = var.cloudfront_acm_certificate_arn == null ? [1] : []
-    content {
-      cloudfront_default_certificate = true
-    }
-  }
-
-  tags = {
-    Name        = "${var.project}-${var.environment}-cloudfront"
-    Project     = var.project
-    Environment = var.environment
-  }
+# 기존 CloudFront 배포 참조 (dijh9mhj7vomy.cloudfront.net)
+data "aws_cloudfront_distribution" "app" {
+  id = var.cloudfront_distribution_id
 }
 
 data "aws_route53_zone" "public" {
+  count        = var.enable_route53_record ? 1 : 0
   name         = var.route53_zone_name
   private_zone = false
 }
 
 resource "aws_route53_record" "apex_a_v2_cloudfront" {
-  zone_id = data.aws_route53_zone.public.zone_id
+  count   = var.enable_route53_record ? 1 : 0
+  zone_id = data.aws_route53_zone.public[0].zone_id
   name    = var.route53_record_name
   type    = "A"
 
@@ -309,12 +181,10 @@ resource "aws_route53_record" "apex_a_v2_cloudfront" {
   }
 
   alias {
-    name                   = aws_cloudfront_distribution.app.domain_name
-    zone_id                = aws_cloudfront_distribution.app.hosted_zone_id
+    name                   = data.aws_cloudfront_distribution.app.domain_name
+    zone_id                = data.aws_cloudfront_distribution.app.hosted_zone_id
     evaluate_target_health = var.route53_evaluate_target_health
   }
-
-  allow_overwrite = true
 }
 
 resource "aws_launch_template" "was" {

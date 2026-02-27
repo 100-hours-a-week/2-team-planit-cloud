@@ -132,8 +132,9 @@ variable "ai_listener_rule_priority" {
 # ------------------------------------------------------------------------------
 
 variable "cloudfront_s3_origin_domain_name" {
-  description = "CloudFront S3 Origin Domain Name (예: bucket.s3.ap-northeast-2.amazonaws.com)"
+  description = "CloudFront S3 Origin Domain Name (기존 배포 참조 시 미사용)"
   type        = string
+  default     = null
 }
 
 variable "cloudfront_s3_origin_path" {
@@ -142,9 +143,15 @@ variable "cloudfront_s3_origin_path" {
   default     = "/dist"
 }
 
-variable "cloudfront_oai_id" {
-  description = "CloudFront Origin Access Identity ID"
+variable "cloudfront_distribution_id" {
+  description = "기존 CloudFront 배포 ID (도메인 dijh9mhj7vomy.cloudfront.net)"
   type        = string
+}
+
+variable "cloudfront_oai_id" {
+  description = "CloudFront Origin Access Identity ID (기존 배포 참조 시 미사용)"
+  type        = string
+  default     = null
 }
 
 variable "cloudfront_aliases" {
@@ -226,6 +233,12 @@ variable "route53_weight" {
 
 variable "route53_evaluate_target_health" {
   description = "Alias 대상 헬스체크 평가 여부"
+  type        = bool
+  default     = false
+}
+
+variable "enable_route53_record" {
+  description = "Route53 apex A 레코드 생성 여부. false면 도메인 연결 없이 CloudFront 기본 URL만 사용"
   type        = bool
   default     = false
 }

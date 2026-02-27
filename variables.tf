@@ -152,10 +152,16 @@ variable "cloudfront_aliases" {
   default     = ["planit-ai.store"]
 }
 
-variable "cloudfront_acm_certificate_arn" {
-  description = "CloudFront용 ACM 인증서 ARN(us-east-1). 없으면 CloudFront 기본 인증서 사용"
+variable "cloudfront_distribution_id" {
+  description = "기존 CloudFront 배포 ID (도메인 dijh9mhj7vomy.cloudfront.net)"
   type        = string
-  default     = "arn:aws:acm:us-east-1:713881824287:certificate/e7e79b39-1429-4534-8ae7-bcf6bdf237ae"
+  default     = "EFRIGL57680PY"
+}
+
+variable "cloudfront_acm_certificate_arn" {
+  description = "CloudFront용 ACM 인증서 ARN(us-east-1). 기존 배포 참조 시 미사용"
+  type        = string
+  default     = null
 }
 
 variable "cloudfront_minimum_protocol_version" {
@@ -228,13 +234,19 @@ variable "route53_set_identifier" {
 variable "route53_weight" {
   description = "가중치 기반 라우팅 weight"
   type        = number
-  default     = 255
+  default     = 0
 }
 
 variable "route53_evaluate_target_health" {
   description = "Alias 대상 헬스체크 평가 여부"
   type        = bool
   default     = false
+}
+
+variable "enable_route53_record" {
+  description = "Route53 apex A 레코드 생성 여부"
+  type        = bool
+  default     = true
 }
 
 # ------------------------------------------------------------------------------

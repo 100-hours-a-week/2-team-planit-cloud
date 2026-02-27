@@ -80,30 +80,30 @@ output "chat_private_ip" {
 
 output "cloudfront_distribution_id" {
   description = "CloudFront Distribution ID"
-  value       = aws_cloudfront_distribution.app.id
+  value       = data.aws_cloudfront_distribution.app.id
 }
 
 output "cloudfront_distribution_arn" {
   description = "CloudFront Distribution ARN (S3 버킷 정책 Condition 등에서 사용)"
-  value       = aws_cloudfront_distribution.app.arn
+  value       = data.aws_cloudfront_distribution.app.arn
 }
 
 output "cloudfront_domain_name" {
   description = "CloudFront Domain Name"
-  value       = aws_cloudfront_distribution.app.domain_name
+  value       = data.aws_cloudfront_distribution.app.domain_name
 }
 
 output "cloudfront_hosted_zone_id" {
   description = "CloudFront Hosted Zone ID"
-  value       = aws_cloudfront_distribution.app.hosted_zone_id
+  value       = data.aws_cloudfront_distribution.app.hosted_zone_id
 }
 
 output "route53_zone_id" {
-  description = "Route53 Public Hosted Zone ID"
-  value       = data.aws_route53_zone.public.zone_id
+  description = "Route53 Public Hosted Zone ID (enable_route53_record=true일 때만)"
+  value       = var.enable_route53_record ? data.aws_route53_zone.public[0].zone_id : null
 }
 
 output "route53_apex_a_fqdn" {
-  description = "Route53 apex A 레코드 FQDN"
-  value       = aws_route53_record.apex_a_v2_cloudfront.fqdn
+  description = "Route53 apex A 레코드 FQDN (enable_route53_record=true일 때만)"
+  value       = var.enable_route53_record ? aws_route53_record.apex_a_v2_cloudfront[0].fqdn : null
 }

@@ -116,22 +116,13 @@ module "compute" {
   alb_security_group_id  = module.security.security_group_ids.alb
   was_security_group_id  = module.security.security_group_ids.be
   ai_security_group_id   = module.security.security_group_ids.ai
-  cloudfront_s3_origin_domain_name = module.storage.fe_bucket_regional_domain_name
-  cloudfront_s3_origin_path        = var.cloudfront_s3_origin_path
-  cloudfront_oai_id                = aws_cloudfront_origin_access_identity.this.id
-  cloudfront_aliases               = var.cloudfront_aliases
-  cloudfront_acm_certificate_arn   = var.cloudfront_acm_certificate_arn
-  cloudfront_minimum_protocol_version = var.cloudfront_minimum_protocol_version
-  cloudfront_price_class              = var.cloudfront_price_class
-  cloudfront_default_root_object      = var.cloudfront_default_root_object
-  cloudfront_http_version             = var.cloudfront_http_version
-  cloudfront_s3_image_origin_domain_name = var.cloudfront_s3_image_origin_domain_name
-  cloudfront_image_path_patterns      = var.cloudfront_image_path_patterns
+  cloudfront_distribution_id = var.cloudfront_distribution_id
   route53_zone_name                   = var.route53_zone_name
   route53_record_name                 = var.route53_record_name
   route53_set_identifier              = var.route53_set_identifier
   route53_weight                      = var.route53_weight
   route53_evaluate_target_health      = var.route53_evaluate_target_health
+  enable_route53_record               = var.enable_route53_record
 
   was_ami_id                     = var.was_ami_id
   was_instance_type              = var.was_instance_type
