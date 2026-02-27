@@ -180,7 +180,7 @@ resource "aws_cloudfront_distribution" "app" {
   # CloudFront alias는 ACM 인증서(us-east-1)가 있을 때만 활성화
   aliases = var.cloudfront_acm_certificate_arn == null ? [] : var.cloudfront_aliases
 
-  # 1) S3 오리진 (프론트 정적 파일) — planit-v2-fe-s3-bucket
+  # 1) S3 오리진 (프론트 정적 파일)
   origin {
     domain_name = var.cloudfront_s3_origin_domain_name
     origin_id   = "s3-fe-origin"
@@ -253,7 +253,7 @@ resource "aws_cloudfront_distribution" "app" {
     }
   }
 
-  # 동작 5(기본): * → FE S3(planit-v2-fe-s3-bucket), CachingOptimized, HTTP 및 HTTPS 허용
+  # 동작 5(기본): * → FE S3, CachingOptimized, HTTP 및 HTTPS 허용
   default_cache_behavior {
     target_origin_id       = "s3-fe-origin"
     viewer_protocol_policy = "allow-all"

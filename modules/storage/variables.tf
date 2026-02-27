@@ -83,12 +83,11 @@ variable "db_volume_type" {
 variable "fe_bucket_name" {
   description = "FE 정적 파일 업로드용 S3 버킷 이름"
   type        = string
-  default     = "planit-v2-fe-s3-bucket"
+  default     = "planit-prod-fe-s3-bucket"
 }
 
 variable "backup_bucket_name" {
   description = "DB 백업용 S3 버킷 이름"
   type        = string
-  default     = "planit-db-backup"
+  default     = "planit-prod-db-backup-s3"
 }
-

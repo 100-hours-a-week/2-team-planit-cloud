@@ -141,7 +141,7 @@ resource "aws_volume_attachment" "db_replica_data" {
 
 
 # ------------------------------------------------------------------------------
-# S3: FE/업로드용 버킷 (planit-v2-fe-s3-bucket)
+# S3: FE/업로드용 버킷
 # ------------------------------------------------------------------------------
 
 resource "aws_s3_bucket" "fe" {
@@ -177,7 +177,7 @@ resource "aws_s3_bucket_public_access_block" "fe" {
 # FE 버킷 정책은 루트에서 CloudFront 배포 ARN으로 설정 (terraform.tf의 aws_s3_bucket_policy.fe)
 
 # ------------------------------------------------------------------------------
-# S3: DB 백업용 버킷 (planit-db-backup)
+# S3: DB 백업용 버킷
 # ------------------------------------------------------------------------------
 
 resource "aws_s3_bucket" "backup" {
