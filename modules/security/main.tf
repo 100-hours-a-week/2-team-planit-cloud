@@ -398,6 +398,17 @@ resource "aws_iam_role_policy" "ec2_ssm_inline" {
   policy = var.ec2_ssm_inline_policy_json
 }
 
+resource "aws_iam_instance_profile" "ec2_ssm" {
+  name = "${var.project}-${var.environment}-ec2-ssm-instance-profile"
+  role = aws_iam_role.ec2_ssm.name
+
+  tags = {
+    Name        = "${var.project}-${var.environment}-ec2-ssm-instance-profile"
+    Project     = var.project
+    Environment = var.environment
+  }
+}
+
 resource "aws_iam_role" "ec2_s3" {
   name               = "${var.project}-${var.environment}-ec2-s3-role"
   assume_role_policy = data.aws_iam_policy_document.ec2_assume_role.json
@@ -422,4 +433,15 @@ resource "aws_iam_role_policy" "ec2_s3_inline" {
   name   = "${var.project}-${var.environment}-ec2-s3-inline-policy"
   role   = aws_iam_role.ec2_s3.id
   policy = var.ec2_s3_inline_policy_json
+}
+
+resource "aws_iam_instance_profile" "ec2_s3" {
+  name = "${var.project}-${var.environment}-ec2-s3-instance-profile"
+  role = aws_iam_role.ec2_s3.name
+
+  tags = {
+    Name        = "${var.project}-${var.environment}-ec2-s3-instance-profile"
+    Project     = var.project
+    Environment = var.environment
+  }
 }

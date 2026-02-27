@@ -133,7 +133,7 @@ module "compute" {
   was_health_check_type          = var.was_health_check_type
   was_health_check_grace_period  = var.was_health_check_grace_period
   was_user_data_base64           = var.was_user_data_base64
-  was_iam_instance_profile_name  = var.was_iam_instance_profile_name
+  was_iam_instance_profile_name  = module.security.iam_instance_profile_names.ec2_ssm
 
   ai_ami_id                     = var.ai_ami_id
   ai_instance_type              = var.ai_instance_type
@@ -144,14 +144,14 @@ module "compute" {
   ai_health_check_type          = var.ai_health_check_type
   ai_health_check_grace_period  = var.ai_health_check_grace_period
   ai_user_data_base64           = var.ai_user_data_base64
-  ai_iam_instance_profile_name  = var.ai_iam_instance_profile_name
+  ai_iam_instance_profile_name  = module.security.iam_instance_profile_names.ec2_ssm
 
   chat_subnet_id                 = module.network.private_app_subnet_ids[0]
   chat_security_group_id         = module.security.security_group_ids.be
   chat_ami_id                    = var.chat_ami_id
   chat_instance_type             = var.chat_instance_type
   chat_key_name                  = var.chat_key_name
-  chat_iam_instance_profile_name = var.chat_iam_instance_profile_name
+  chat_iam_instance_profile_name = module.security.iam_instance_profile_names.ec2_ssm
   chat_user_data_base64          = var.chat_user_data_base64
   chat_root_volume_size_gb       = var.chat_root_volume_size_gb
   chat_root_volume_type          = var.chat_root_volume_type

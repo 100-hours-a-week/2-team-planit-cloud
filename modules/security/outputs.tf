@@ -16,3 +16,11 @@ output "iam_role_names" {
     ec2_s3  = aws_iam_role.ec2_s3.name
   }
 }
+
+output "iam_instance_profile_names" {
+  description = "IAM Instance Profile 이름 매핑"
+  value = {
+    ec2_ssm = aws_iam_instance_profile.ec2_ssm.name
+    ec2_s3  = aws_iam_instance_profile.ec2_s3.name
+  }
+}

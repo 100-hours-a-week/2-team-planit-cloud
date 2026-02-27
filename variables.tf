@@ -87,7 +87,10 @@ variable "ec2_ssm_inline_policy_json" {
         "ecr:BatchGetImage",
         "ecr:GetDownloadUrlForLayer"
       ],
-      "Resource": "arn:aws:ecr:ap-northeast-2:713881824287:repository/planit-was"
+      "Resource": [
+        "arn:aws:ecr:ap-northeast-2:713881824287:repository/planit-was",
+        "arn:aws:ecr:ap-northeast-2:713881824287:repository/planit-ai"
+      ]
     }
   ]
 }
