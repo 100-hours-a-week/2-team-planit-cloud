@@ -5,7 +5,6 @@ locals {
     be    = "${var.project}-${var.environment}-be-sg"
     db    = "${var.project}-${var.environment}-db-sg"
     queue = "${var.project}-${var.environment}-queue-sg"
-    nat   = "${var.project}-${var.environment}-nat-access-sg"
   }
 
   cloudfront_prefix_list_id = "pl-22a6434b"
@@ -26,22 +25,6 @@ locals {
       to_port        = 80
       prefix_list_id = local.cloudfront_prefix_list_id
       description    = "HTTP from CloudFront"
-    }
-    alb_https_from_nat = {
-      sg          = "alb"
-      protocol    = "tcp"
-      from_port   = 443
-      to_port     = 443
-      source_sg   = "nat"
-      description = "HTTPS from nat_sg"
-    }
-    alb_http_from_nat = {
-      sg          = "alb"
-      protocol    = "tcp"
-      from_port   = 80
-      to_port     = 80
-      source_sg   = "nat"
-      description = "HTTP from nat_sg"
     }
     alb_https_from_cloudfront = {
       sg             = "alb"
@@ -142,71 +125,6 @@ locals {
       to_port     = 6379
       source_sg   = "be"
       description = "Redis from be_sg"
-    }
-
-    nat_443_from_10_0_21 = {
-      sg          = "nat"
-      protocol    = "tcp"
-      from_port   = 443
-      to_port     = 443
-      cidr_ipv4   = "10.0.21.0/24"
-      description = "HTTPS from 10.0.21.0/24"
-    }
-    nat_80_from_10_0_20 = {
-      sg          = "nat"
-      protocol    = "tcp"
-      from_port   = 80
-      to_port     = 80
-      cidr_ipv4   = "10.0.20.0/24"
-      description = "HTTP from 10.0.20.0/24"
-    }
-    nat_80_from_10_0_21 = {
-      sg          = "nat"
-      protocol    = "tcp"
-      from_port   = 80
-      to_port     = 80
-      cidr_ipv4   = "10.0.21.0/24"
-      description = "HTTP from 10.0.21.0/24"
-    }
-    nat_443_from_10_0_11 = {
-      sg          = "nat"
-      protocol    = "tcp"
-      from_port   = 443
-      to_port     = 443
-      cidr_ipv4   = "10.0.11.0/24"
-      description = "HTTPS from 10.0.11.0/24"
-    }
-    nat_80_from_10_0_11 = {
-      sg          = "nat"
-      protocol    = "tcp"
-      from_port   = 80
-      to_port     = 80
-      cidr_ipv4   = "10.0.11.0/24"
-      description = "HTTP from 10.0.11.0/24"
-    }
-    nat_443_from_10_0_10 = {
-      sg          = "nat"
-      protocol    = "tcp"
-      from_port   = 443
-      to_port     = 443
-      cidr_ipv4   = "10.0.10.0/24"
-      description = "HTTPS from 10.0.10.0/24"
-    }
-    nat_80_from_10_0_10 = {
-      sg          = "nat"
-      protocol    = "tcp"
-      from_port   = 80
-      to_port     = 80
-      cidr_ipv4   = "10.0.10.0/24"
-      description = "HTTP from 10.0.10.0/24"
-    }
-    nat_443_from_10_0_20 = {
-      sg          = "nat"
-      protocol    = "tcp"
-      from_port   = 443
-      to_port     = 443
-      cidr_ipv4   = "10.0.20.0/24"
-      description = "HTTPS from 10.0.20.0/24"
     }
 
   }
@@ -341,29 +259,6 @@ locals {
       protocol    = "-1"
       cidr_ipv4   = "0.0.0.0/0"
       description = "All outbound"
-    }
-
-    nat_all_to_anywhere = {
-      sg          = "nat"
-      protocol    = "-1"
-      cidr_ipv4   = "0.0.0.0/0"
-      description = "All outbound"
-    }
-    nat_80_to_anywhere = {
-      sg          = "nat"
-      protocol    = "tcp"
-      from_port   = 80
-      to_port     = 80
-      cidr_ipv4   = "0.0.0.0/0"
-      description = "HTTP outbound"
-    }
-    nat_443_to_anywhere = {
-      sg          = "nat"
-      protocol    = "tcp"
-      from_port   = 443
-      to_port     = 443
-      cidr_ipv4   = "0.0.0.0/0"
-      description = "HTTPS outbound"
     }
 
   }
