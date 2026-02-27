@@ -352,16 +352,6 @@ resource "aws_vpc_security_group_ingress_rule" "nat_from_queue" {
   referenced_security_group_id  = aws_security_group.this["queue"].id
 }
 
-resource "aws_vpc_security_group_egress_rule" "nat_all_to_anywhere" {
-  count = var.enable_nat_instance ? 1 : 0
-
-  security_group_id = var.nat_security_group_id
-  ip_protocol       = "-1"
-  from_port         = null
-  to_port           = null
-  cidr_ipv4         = "0.0.0.0/0"
-  description       = "All outbound"
-}
 
 data "aws_iam_policy_document" "ec2_assume_role" {
   statement {
