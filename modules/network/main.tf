@@ -44,7 +44,7 @@ resource "aws_internet_gateway" "main" {
 locals {
   azs = slice(data.aws_availability_zones.available.names, 0, 2)
 
-  # VPC CIDR 내 서브넷 (vpc_cidr에 따라 자동 계산 — 운영 10.0.0.0/16과 분리 시 10.1.0.0/16 사용)
+  # 이 스택 전용 VPC 내 서브넷 (vpc_cidr 기준 자동 계산. 운영 10.0.0.0/16과 겹치지 않도록 기본 10.1.0.0/16 사용)
   # cidrsubnet(prefix, newbits, netnum): prefix를 newbits만큼 확장한 서브넷들 중 netnum번째 CIDR을 반환 (예: 10.1.0.0/16, 8, 2 → 10.1.2.0/24)
   public_cidrs      = [cidrsubnet(var.vpc_cidr, 8, 2), cidrsubnet(var.vpc_cidr, 8, 3)]
   private_app_cidrs  = [cidrsubnet(var.vpc_cidr, 8, 10), cidrsubnet(var.vpc_cidr, 8, 11)]
@@ -98,7 +98,7 @@ resource "aws_subnet" "private_db" {
 }
 
 # ------------------------------------------------------------------------------
-# Route Table: Public
+# Route Table: Public (Public a, b → IGW. ALB 및 NAT 인스턴스 외부 통신)
 # ------------------------------------------------------------------------------
 
 resource "aws_route_table" "public" {
@@ -129,15 +129,15 @@ resource "aws_route_table_association" "public" {
 resource "aws_security_group" "nat" {
   count       = var.enable_nat_instance ? 1 : 0
   name        = "${var.project}-${var.environment}-nat-sg"
-  description = "NAT Instance: Allow all from private app subnets, all outbound"
+  description = "NAT Instance: Allow all from private subnets (app+db), all outbound"
   vpc_id      = aws_vpc.main.id
 
   ingress {
-    description = "All from private app (NAT forwarding)"
+    description = "All from private subnets (app+db, NAT forwarding)"
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
-    cidr_blocks = local.private_app_cidrs
+    cidr_blocks = concat(local.private_app_cidrs, local.private_db_cidrs)
   }
 
   egress {
@@ -190,10 +190,11 @@ resource "aws_instance" "nat" {
 }
 
 # ------------------------------------------------------------------------------
-# Route Table: Private App (AZ별 1개, 각 AZ의 NAT Instance 경유 아웃바운드)
+# Route Table: Private (AZ별 1개 — Private App + DB 해당 AZ의 NAT Instance 경유)
+# RT-Private-A: Private a1(app), a2(db) → NAT a | RT-Private-B: Private b1(app), b2(db) → NAT b
 # ------------------------------------------------------------------------------
 
-resource "aws_route_table" "private_app" {
+resource "aws_route_table" "private_az" {
   count  = 2
   vpc_id = aws_vpc.main.id
 
@@ -206,7 +207,7 @@ resource "aws_route_table" "private_app" {
   }
 
   tags = {
-    Name        = "${var.project}-${var.environment}-private-app-rt-${count.index}"
+    Name        = "${var.project}-${var.environment}-private-rt-${count.index}"
     Project     = var.project
     Environment = var.environment
   }
@@ -215,25 +216,11 @@ resource "aws_route_table" "private_app" {
 resource "aws_route_table_association" "private_app" {
   count          = length(aws_subnet.private_app)
   subnet_id      = aws_subnet.private_app[count.index].id
-  route_table_id = aws_route_table.private_app[count.index].id
-}
-
-# ------------------------------------------------------------------------------
-# Route Table: Private DB (인터넷 아웃바운드 없음)
-# ------------------------------------------------------------------------------
-
-resource "aws_route_table" "private_db" {
-  vpc_id = aws_vpc.main.id
-
-  tags = {
-    Name        = "${var.project}-${var.environment}-private-db-rt"
-    Project     = var.project
-    Environment = var.environment
-  }
+  route_table_id = aws_route_table.private_az[count.index].id
 }
 
 resource "aws_route_table_association" "private_db" {
   count          = length(aws_subnet.private_db)
   subnet_id      = aws_subnet.private_db[count.index].id
-  route_table_id = aws_route_table.private_db.id
+  route_table_id = aws_route_table.private_az[count.index].id
 }
