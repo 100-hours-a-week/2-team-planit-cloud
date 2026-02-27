@@ -286,6 +286,14 @@ locals {
       target_sg   = "queue"
       description = "Redis to queue_sg"
     }
+    be_80_to_anywhere = {
+      sg          = "be"
+      protocol    = "tcp"
+      from_port   = 80
+      to_port     = 80
+      cidr_ipv4   = "0.0.0.0/0"
+      description = "HTTP outbound"
+    }
     be_443_to_anywhere = {
       sg          = "be"
       protocol    = "tcp"
