@@ -134,6 +134,12 @@ variable "db_data_volume_size_gb" {
   default     = 20
 }
 
+variable "mongo_instance_type" {
+  description = "MongoDB EC2 인스턴스 타입"
+  type        = string
+  default     = "t4g.small"
+}
+
 variable "cloudfront_s3_origin_path" {
   description = "CloudFront S3 origin path"
   type        = string

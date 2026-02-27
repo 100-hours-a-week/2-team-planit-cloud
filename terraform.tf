@@ -93,6 +93,9 @@ module "storage" {
   db_ami_id             = var.db_ami_id
   db_key_name           = var.db_key_name
 
+  mongo_ami_id         = var.was_ami_id
+  mongo_instance_type  = var.mongo_instance_type
+
   db_root_volume_size_gb = var.db_root_volume_size_gb
   db_data_volume_size_gb = var.db_data_volume_size_gb
 }

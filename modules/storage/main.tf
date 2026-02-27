@@ -86,6 +86,34 @@ resource "aws_instance" "db_arbiter" {
 }
 
 # ------------------------------------------------------------------------------
+# MongoDB EC2 (단일 인스턴스, Private DB subnet a)
+# ------------------------------------------------------------------------------
+
+resource "aws_instance" "mongo" {
+  count         = 1
+  ami           = var.mongo_ami_id
+  instance_type = var.mongo_instance_type
+  subnet_id     = local.subnet_a_id
+  key_name      = var.db_key_name
+
+  vpc_security_group_ids = [var.application_sg_id]
+
+  root_block_device {
+    volume_size           = var.db_root_volume_size_gb
+    volume_type           = var.db_volume_type
+    encrypted             = true
+    delete_on_termination = true
+  }
+
+  tags = {
+    Name        = "${var.project}-${var.environment}-mongo"
+    Project     = var.project
+    Environment = var.environment
+    Role        = "mongo"
+  }
+}
+
+# ------------------------------------------------------------------------------
 # EBS 데이터 볼륨 (DB EC2당 1개, 동일 AZ) + 연결
 # ------------------------------------------------------------------------------
 
@@ -93,6 +121,7 @@ resource "aws_instance" "db_arbiter" {
 locals {
   db_primary_az = aws_instance.db_primary[0].availability_zone
   db_replica_az = aws_instance.db_replica[0].availability_zone
+  mongo_az     = aws_instance.mongo[0].availability_zone
 }
 
 # Primary DB 전용 EBS 볼륨 생성 및 EC2에 /dev/sdf 로 attach (MySQL 데이터 디렉터리용)
@@ -139,6 +168,27 @@ resource "aws_volume_attachment" "db_replica_data" {
   instance_id = aws_instance.db_replica[count.index].id
 }
 
+# MongoDB 전용 EBS 볼륨 생성 및 EC2에 /dev/sdg 로 attach (MongoDB 데이터 디렉터리용)
+resource "aws_ebs_volume" "mongo_data" {
+  count             = 1
+  availability_zone = local.mongo_az
+  size              = var.db_data_volume_size_gb
+  type              = var.db_volume_type
+  encrypted         = true
+
+  tags = {
+    Name        = "${var.project}-${var.environment}-mongo-data"
+    Project     = var.project
+    Environment = var.environment
+  }
+}
+
+resource "aws_volume_attachment" "mongo_data" {
+  count       = 1
+  device_name = "/dev/sdg"
+  volume_id   = aws_ebs_volume.mongo_data[0].id
+  instance_id = aws_instance.mongo[0].id
+}
 
 # ------------------------------------------------------------------------------
 # S3: FE/업로드용 버킷
