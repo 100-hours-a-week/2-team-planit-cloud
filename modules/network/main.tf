@@ -129,23 +129,10 @@ resource "aws_route_table_association" "public" {
 resource "aws_security_group" "nat" {
   count       = var.enable_nat_instance ? 1 : 0
   name        = "${var.project}-${var.environment}-nat-sg"
-  description = "NAT Instance: Allow all from private subnets (app+db), all outbound"
+  description = "NAT Instance: Inbound/outbound managed by security module"
   vpc_id      = aws_vpc.main.id
 
-  ingress {
-    description = "All from private subnets (app+db, NAT forwarding)"
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = concat(local.private_app_cidrs, local.private_db_cidrs)
-  }
 
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
 
   tags = {
     Name        = "${var.project}-${var.environment}-nat-sg"
