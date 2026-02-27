@@ -42,3 +42,9 @@ variable "ec2_s3_inline_policy_json" {
   type        = string
   default     = null
 }
+
+variable "nat_security_group_id" {
+  description = "NAT 인스턴스에 적용된 보안 그룹 ID (network 모듈에서 전달). 없으면 NAT 관련 규칙 생성 안 함."
+  type        = string
+  default     = null
+}

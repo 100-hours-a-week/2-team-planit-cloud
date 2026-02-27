@@ -70,6 +70,7 @@ module "security" {
   project     = var.project
   environment = var.environment
 
+  nat_security_group_id      = module.network.nat_security_group_id
   ec2_assume_role_service     = var.ec2_assume_role_service
   ec2_ssm_managed_policy_arns = var.ec2_ssm_managed_policy_arns
   ec2_ssm_inline_policy_json  = var.ec2_ssm_inline_policy_json

@@ -312,6 +312,61 @@ resource "aws_vpc_security_group_egress_rule" "this" {
   cidr_ipv4                    = try(each.value.cidr_ipv4, null)
 }
 
+resource "aws_vpc_security_group_ingress_rule" "nat_from_be" {
+  count = var.nat_security_group_id == null ? 0 : 1
+
+  security_group_id             = var.nat_security_group_id
+  ip_protocol                   = "-1"
+  from_port                     = null
+  to_port                       = null
+  description                   = "All from be_sg (NAT forwarding)"
+  referenced_security_group_id  = aws_security_group.this["be"].id
+}
+
+resource "aws_vpc_security_group_ingress_rule" "nat_from_ai" {
+  count = var.nat_security_group_id == null ? 0 : 1
+
+  security_group_id             = var.nat_security_group_id
+  ip_protocol                   = "-1"
+  from_port                     = null
+  to_port                       = null
+  description                   = "All from ai_sg (NAT forwarding)"
+  referenced_security_group_id  = aws_security_group.this["ai"].id
+}
+
+resource "aws_vpc_security_group_ingress_rule" "nat_from_db" {
+  count = var.nat_security_group_id == null ? 0 : 1
+
+  security_group_id             = var.nat_security_group_id
+  ip_protocol                   = "-1"
+  from_port                     = null
+  to_port                       = null
+  description                   = "All from db_sg (NAT forwarding)"
+  referenced_security_group_id  = aws_security_group.this["db"].id
+}
+
+resource "aws_vpc_security_group_ingress_rule" "nat_from_queue" {
+  count = var.nat_security_group_id == null ? 0 : 1
+
+  security_group_id             = var.nat_security_group_id
+  ip_protocol                   = "-1"
+  from_port                     = null
+  to_port                       = null
+  description                   = "All from queue_sg (NAT forwarding)"
+  referenced_security_group_id  = aws_security_group.this["queue"].id
+}
+
+resource "aws_vpc_security_group_egress_rule" "nat_all_to_anywhere" {
+  count = var.nat_security_group_id == null ? 0 : 1
+
+  security_group_id = var.nat_security_group_id
+  ip_protocol       = "-1"
+  from_port         = null
+  to_port           = null
+  cidr_ipv4         = "0.0.0.0/0"
+  description       = "All outbound"
+}
+
 data "aws_iam_policy_document" "ec2_assume_role" {
   statement {
     sid     = "EC2AssumeRole"

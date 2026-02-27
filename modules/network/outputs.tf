@@ -49,6 +49,11 @@ output "availability_zones" {
 # NAT Instance (AZ당 1대, 총 2대)
 # ------------------------------------------------------------------------------
 
+output "nat_security_group_id" {
+  description = "NAT Instance에 적용된 보안 그룹 ID (enable_nat_instance=true일 때만, 아니면 null)"
+  value       = var.enable_nat_instance ? aws_security_group.nat[0].id : null
+}
+
 output "nat_instance_ids" {
   description = "NAT Instance ID 목록 (enable_nat_instance=true일 때만)"
   value       = var.enable_nat_instance ? aws_instance.nat[*].id : []
