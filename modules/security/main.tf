@@ -279,10 +279,6 @@ resource "aws_security_group" "this" {
     Project     = var.project
     Environment = var.environment
   }
-
-  lifecycle {
-    prevent_destroy = true
-  }
 }
 
 resource "aws_vpc_security_group_ingress_rule" "this" {
@@ -313,7 +309,7 @@ resource "aws_vpc_security_group_egress_rule" "this" {
 }
 
 resource "aws_vpc_security_group_ingress_rule" "nat_from_be" {
-  count = var.nat_security_group_id == null ? 0 : 1
+  count = var.enable_nat_instance ? 1 : 0
 
   security_group_id             = var.nat_security_group_id
   ip_protocol                   = "-1"
@@ -324,7 +320,7 @@ resource "aws_vpc_security_group_ingress_rule" "nat_from_be" {
 }
 
 resource "aws_vpc_security_group_ingress_rule" "nat_from_ai" {
-  count = var.nat_security_group_id == null ? 0 : 1
+  count = var.enable_nat_instance ? 1 : 0
 
   security_group_id             = var.nat_security_group_id
   ip_protocol                   = "-1"
@@ -335,7 +331,7 @@ resource "aws_vpc_security_group_ingress_rule" "nat_from_ai" {
 }
 
 resource "aws_vpc_security_group_ingress_rule" "nat_from_db" {
-  count = var.nat_security_group_id == null ? 0 : 1
+  count = var.enable_nat_instance ? 1 : 0
 
   security_group_id             = var.nat_security_group_id
   ip_protocol                   = "-1"
@@ -346,7 +342,7 @@ resource "aws_vpc_security_group_ingress_rule" "nat_from_db" {
 }
 
 resource "aws_vpc_security_group_ingress_rule" "nat_from_queue" {
-  count = var.nat_security_group_id == null ? 0 : 1
+  count = var.enable_nat_instance ? 1 : 0
 
   security_group_id             = var.nat_security_group_id
   ip_protocol                   = "-1"
@@ -357,7 +353,7 @@ resource "aws_vpc_security_group_ingress_rule" "nat_from_queue" {
 }
 
 resource "aws_vpc_security_group_egress_rule" "nat_all_to_anywhere" {
-  count = var.nat_security_group_id == null ? 0 : 1
+  count = var.enable_nat_instance ? 1 : 0
 
   security_group_id = var.nat_security_group_id
   ip_protocol       = "-1"
