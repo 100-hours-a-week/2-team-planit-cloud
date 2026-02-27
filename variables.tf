@@ -280,7 +280,7 @@ variable "was_asg_min_size" {
 variable "was_asg_desired_capacity" {
   description = "WAS ASG 희망 인스턴스 수"
   type        = number
-  default     = 4
+  default     = 2
 }
 
 variable "was_asg_max_size" {
