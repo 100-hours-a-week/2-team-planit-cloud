@@ -271,9 +271,6 @@ resource "aws_security_group" "this" {
   vpc_id                 = var.vpc_id
   revoke_rules_on_delete = true
 
-  ingress = []
-  egress  = []
-
   tags = {
     Name = each.value
     Project     = var.project
