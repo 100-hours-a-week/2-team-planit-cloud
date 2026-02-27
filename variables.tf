@@ -216,42 +216,6 @@ variable "image_bucket_cors_origins" {
   default     = ["http://localhost:5173", "http://localhost:3000", "https://planit-ai.store", "https://www.planit-ai.store", "https://d1e7kkp6huat07.cloudfront.net"]
 }
 
-variable "route53_zone_name" {
-  description = "Route53 Public Hosted Zone 이름"
-  type        = string
-  default     = "planit-ai.store."
-}
-
-variable "route53_record_name" {
-  description = "Route53 레코드 이름"
-  type        = string
-  default     = "planit-ai.store"
-}
-
-variable "route53_set_identifier" {
-  description = "가중치 기반 라우팅 set_identifier"
-  type        = string
-  default     = "v2 fe cloudfront"
-}
-
-variable "route53_weight" {
-  description = "가중치 기반 라우팅 weight"
-  type        = number
-  default     = 0
-}
-
-variable "route53_evaluate_target_health" {
-  description = "Alias 대상 헬스체크 평가 여부"
-  type        = bool
-  default     = false
-}
-
-variable "enable_route53_record" {
-  description = "Route53 apex A 레코드 생성 여부"
-  type        = bool
-  default     = true
-}
-
 # ------------------------------------------------------------------------------
 # Compute 모듈 (WAS ASG)
 # ------------------------------------------------------------------------------

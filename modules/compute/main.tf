@@ -162,31 +162,6 @@ data "aws_cloudfront_distribution" "app" {
   id = var.cloudfront_distribution_id
 }
 
-data "aws_route53_zone" "public" {
-  count        = var.enable_route53_record ? 1 : 0
-  name         = var.route53_zone_name
-  private_zone = false
-}
-
-resource "aws_route53_record" "apex_a_v2_cloudfront" {
-  count   = var.enable_route53_record ? 1 : 0
-  zone_id = data.aws_route53_zone.public[0].zone_id
-  name    = var.route53_record_name
-  type    = "A"
-
-  set_identifier = var.route53_set_identifier
-
-  weighted_routing_policy {
-    weight = var.route53_weight
-  }
-
-  alias {
-    name                   = data.aws_cloudfront_distribution.app.domain_name
-    zone_id                = data.aws_cloudfront_distribution.app.hosted_zone_id
-    evaluate_target_health = var.route53_evaluate_target_health
-  }
-}
-
 resource "aws_launch_template" "was" {
   name_prefix   = "${var.project}-${var.environment}-was-lt-"
   image_id      = var.was_ami_id

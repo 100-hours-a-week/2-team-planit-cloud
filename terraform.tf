@@ -117,12 +117,6 @@ module "compute" {
   was_security_group_id  = module.security.security_group_ids.be
   ai_security_group_id   = module.security.security_group_ids.ai
   cloudfront_distribution_id = var.cloudfront_distribution_id
-  route53_zone_name                   = var.route53_zone_name
-  route53_record_name                 = var.route53_record_name
-  route53_set_identifier              = var.route53_set_identifier
-  route53_weight                      = var.route53_weight
-  route53_evaluate_target_health      = var.route53_evaluate_target_health
-  enable_route53_record               = var.enable_route53_record
 
   was_ami_id                     = var.was_ami_id
   was_instance_type              = var.was_instance_type

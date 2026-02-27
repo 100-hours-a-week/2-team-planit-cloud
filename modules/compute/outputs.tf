@@ -98,12 +98,3 @@ output "cloudfront_hosted_zone_id" {
   value       = data.aws_cloudfront_distribution.app.hosted_zone_id
 }
 
-output "route53_zone_id" {
-  description = "Route53 Public Hosted Zone ID (enable_route53_record=true일 때만)"
-  value       = var.enable_route53_record ? data.aws_route53_zone.public[0].zone_id : null
-}
-
-output "route53_apex_a_fqdn" {
-  description = "Route53 apex A 레코드 FQDN (enable_route53_record=true일 때만)"
-  value       = var.enable_route53_record ? aws_route53_record.apex_a_v2_cloudfront[0].fqdn : null
-}

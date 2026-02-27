@@ -204,46 +204,6 @@ variable "cloudfront_image_path_patterns" {
 }
 
 # ------------------------------------------------------------------------------
-# Route53
-# ------------------------------------------------------------------------------
-
-variable "route53_zone_name" {
-  description = "Route53 Public Hosted Zone 이름"
-  type        = string
-  default     = "planit-ai.store."
-}
-
-variable "route53_record_name" {
-  description = "Route53 레코드 이름(apex는 도메인과 동일)"
-  type        = string
-  default     = "planit-ai.store"
-}
-
-variable "route53_set_identifier" {
-  description = "가중치 기반 라우팅 set_identifier"
-  type        = string
-  default     = "v2 fe cloudfront"
-}
-
-variable "route53_weight" {
-  description = "가중치 기반 라우팅 weight"
-  type        = number
-  default     = 255
-}
-
-variable "route53_evaluate_target_health" {
-  description = "Alias 대상 헬스체크 평가 여부"
-  type        = bool
-  default     = false
-}
-
-variable "enable_route53_record" {
-  description = "Route53 apex A 레코드 생성 여부. false면 도메인 연결 없이 CloudFront 기본 URL만 사용"
-  type        = bool
-  default     = false
-}
-
-# ------------------------------------------------------------------------------
 # WAS ASG
 # ------------------------------------------------------------------------------
 

@@ -174,12 +174,3 @@ output "cloudfront_hosted_zone_id" {
   value       = module.compute.cloudfront_hosted_zone_id
 }
 
-output "route53_zone_id" {
-  description = "Route53 Public Hosted Zone ID"
-  value       = module.compute.route53_zone_id
-}
-
-output "route53_apex_a_fqdn" {
-  description = "Route53 apex A 레코드 FQDN"
-  value       = module.compute.route53_apex_a_fqdn
-}
