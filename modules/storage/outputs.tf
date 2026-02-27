@@ -37,6 +37,16 @@ output "db_sg_id" {
   value       = var.application_sg_id
 }
 
+output "mongo_instance_id" {
+  description = "MongoDB EC2 Instance ID"
+  value       = aws_instance.mongo[0].id
+}
+
+output "mongo_private_ip" {
+  description = "MongoDB EC2 Private IP"
+  value       = aws_instance.mongo[0].private_ip
+}
+
 # ------------------------------------------------------------------------------
 # S3
 # ------------------------------------------------------------------------------
