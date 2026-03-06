@@ -22,13 +22,13 @@ jobs:
     env:
       # RunPod
       RUNPOD_API_KEY: ${{ secrets.RUNPOD_API_KEY }}
+      AWS_REGION: ap-northeast-2
+      ASG_NAME: planit-v2-asg-ai
+      SSM_PREFIX: /planit/prod/ai
+      MIN_HEALTHY_PERCENT: "50"
+      INSTANCE_WARMUP: "180"
 
-      # AI server (EC2) - PROD (기존 유지)
-      EC2_HOST: ${{ secrets.EC2_HOST }}
-      EC2_USERNAME: ${{ secrets.EC2_USERNAME }}
-      EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
-
-      # AI server (EC2) - DEV (추가, 없으면 자동 스킵)
+      # AI server (EC2) - DEV
       EC2_HOST_DEV: ${{ secrets.EC2_HOST_DEV }}
       EC2_USERNAME_DEV: ${{ secrets.EC2_USERNAME }}
       EC2_SSH_KEY_DEV: ${{ secrets.EC2_SSH_KEY }}
@@ -301,33 +301,62 @@ jobs:
           echo "Failed to resolve vLLM endpoint via proxy within 30 minutes."
           exit 1
 
+
+      # ssm 파라미터 스토어 업데이트
+      - name: Update SSM VLLM_BASE_URL
+        if: steps.decide.outputs.action == 'start'
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: ap-northeast-2
+          SSM_PREFIX: /planit/prod/ai
+          NEW_VLLM_BASE_URL: ${{ steps.endpoint.outputs.vllm_base_url }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          PARAM_NAME="${SSM_PREFIX}/VLLM_BASE_URL"
+
+          echo "Updating SSM parameter: ${PARAM_NAME}"
+          aws ssm put-parameter \
+            --name "${PARAM_NAME}" \
+            --type String \
+            --value "${NEW_VLLM_BASE_URL}" \
+            --overwrite
+
+          saved="$(aws ssm get-parameter \
+            --name "${PARAM_NAME}" \
+            --query 'Parameter.Value' \
+            --output text)"
+
+          if [ "${saved}" != "${NEW_VLLM_BASE_URL}" ]; then
+            echo "SSM verification failed"
+            echo "expected=${NEW_VLLM_BASE_URL}"
+            echo "actual=${saved}"
+            exit 1
+          fi
+
+          echo "SSM parameter updated successfully: ${saved}"
+      
+
       # =========================
-      # SSH Allowlist (PROD + optional DEV)
+      # SSH Allowlist (DEV)
       # =========================
       - name: Get GitHub Actions IP
         if: steps.decide.outputs.action == 'start'
         id: get-ip
         uses: haythem/public-ip@v1.3
 
-      - name: Add IP to SG (prod + optional dev)
+      - name: Add IP to SG (dev)
         if: steps.decide.outputs.action == 'start'
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           AWS_REGION: ap-northeast-2
-          PROD_SG: ${{ secrets.SECURITY_GROUP_ID }}
           DEV_SG: ${{ secrets.SECURITY_GROUP_ID_DEV }}
         run: |
           set -euo pipefail
           ip="${{ steps.get-ip.outputs.ipv4 }}/32"
-
-          echo "Authorize $ip to PROD SG: $PROD_SG"
-          aws ec2 authorize-security-group-ingress \
-            --group-id "$PROD_SG" \
-            --protocol tcp \
-            --port 22 \
-            --cidr "$ip" \
-            || echo "IP may already be in PROD security group"
 
           if [ -n "${DEV_SG:-}" ]; then
             echo "Authorize $ip to DEV SG: $DEV_SG"
@@ -344,62 +373,9 @@ jobs:
           sleep 10
 
       # =========================
-      # Update PROD AI server
+      # Update DEV AI server
       # =========================
-      - name: Update PROD AI .env VLLM_BASE_URL only and restart AI server
-        if: steps.decide.outputs.action == 'start'
-        uses: appleboy/ssh-action@v1.0.3
-        env:
-          NEW_VLLM_BASE_URL: ${{ steps.endpoint.outputs.vllm_base_url }}
-        with:
-          host: ${{ env.EC2_HOST }}
-          username: ${{ env.EC2_USERNAME }}
-          key: ${{ env.EC2_SSH_KEY }}
-          envs: NEW_VLLM_BASE_URL
-          script: |
-            set -e
-            trap 'echo "FAILED at line $LINENO"; exit 1' ERR
-
-            BASE="/var/www/planit/ai"
-            APP_DIR="$BASE/app"
-            ENV_FILE="$APP_DIR/.env"
-            LOG="$BASE/app.log"
-
-            test -d "$APP_DIR"
-            test -f "$ENV_FILE"
-
-            if grep -qE '^VLLM_BASE_URL="' "$ENV_FILE"; then
-              sed -i "s|^VLLM_BASE_URL=\".*\"|VLLM_BASE_URL=\"${NEW_VLLM_BASE_URL}\"|" "$ENV_FILE"
-            elif grep -qE "^VLLM_BASE_URL='" "$ENV_FILE"; then
-              sed -i "s|^VLLM_BASE_URL='.*'|VLLM_BASE_URL='${NEW_VLLM_BASE_URL}'|" "$ENV_FILE"
-            elif grep -qE '^VLLM_BASE_URL=' "$ENV_FILE"; then
-              sed -i "s|^VLLM_BASE_URL=.*|VLLM_BASE_URL=\"${NEW_VLLM_BASE_URL}\"|" "$ENV_FILE"
-            else
-              echo "VLLM_BASE_URL=\"${NEW_VLLM_BASE_URL}\"" >> "$ENV_FILE"
-            fi
-            chmod 600 "$ENV_FILE"
-
-            sudo fuser -k 8000/tcp || true
-            cd "$APP_DIR"
-            nohup ./.venv/bin/python ./main.py > "$LOG" 2>&1 &
-
-            for retry_count in {1..30}; do
-              code=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/health || true)
-              if [ "$code" -eq 200 ] || [ "$code" -eq 401 ]; then
-                echo "PROD AI server is up (HTTP $code)"
-                exit 0
-              fi
-              sleep 10
-            done
-
-            echo "PROD AI server failed to start."
-            tail -n 200 "$LOG" || true
-            exit 1
-
-      # =========================
-      # Update DEV AI server (optional)
-      # =========================
-      - name: Update DEV AI .env VLLM_BASE_URL only and restart AI server (optional)
+      - name: Update DEV AI .env VLLM_BASE_URL only and restart AI server
         if: steps.decide.outputs.action == 'start' && env.EC2_HOST_DEV != ''
         uses: appleboy/ssh-action@v1.0.3
         env:
@@ -449,65 +425,86 @@ jobs:
             tail -n 200 "$LOG" || true
             exit 1
 
-      # ===== V2 ASG: desired=1 이므로 “다 끄고 다시 1대 생성” =====
-      - name: Restart V2 AI ASG (Desired 0 -> 1)
+      # 인스턴스 Refresh
+      - name: Start Instance Refresh
+        if: steps.decide.outputs.action == 'start'
+        id: refresh
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        run: |
+          set -euo pipefail
+
+          ID=$(aws autoscaling start-instance-refresh \
+            --auto-scaling-group-name "$ASG_NAME" \
+            --preferences "{\"MinHealthyPercentage\": ${MIN_HEALTHY_PERCENT}, \"InstanceWarmup\": ${INSTANCE_WARMUP}}" \
+            --query "InstanceRefreshId" \
+            --output text)
+
+          if [ -z "$ID" ] || [ "$ID" = "None" ]; then
+            echo "Failed to start instance refresh"
+            exit 1
+          fi
+
+          echo "id=$ID" >> "$GITHUB_OUTPUT"
+          echo "Started refresh $ID"
+
+      - name: Monitor Instance Refresh
         if: steps.decide.outputs.action == 'start'
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          AWS_REGION: ap-northeast-2
         run: |
           set -euo pipefail
-          ASG_NAME="planit-v2-asg-ai"
 
-          echo "Set desired capacity to 0"
-          aws autoscaling update-auto-scaling-group \
-            --auto-scaling-group-name "$ASG_NAME" \
-            --min-size 0 \
-            --desired-capacity 0 \
-            --max-size 1
+          ID="${{ steps.refresh.outputs.id }}"
 
-          echo "Wait for instances to terminate..."
-          for i in $(seq 1 60); do
-            count=$(aws autoscaling describe-auto-scaling-groups \
+          cancel_refresh() {
+            echo "Cancelling instance refresh..."
+            aws autoscaling cancel-instance-refresh \
               --auto-scaling-group-name "$ASG_NAME" \
-              --query 'AutoScalingGroups[0].Instances | length(@)' \
+              || echo "Cancel failed or no refresh running"
+          }
+
+          trap 'echo "Signal received"; cancel_refresh; exit 1' INT TERM
+
+          for i in {1..90}; do
+
+            STATUS=$(aws autoscaling describe-instance-refreshes \
+              --auto-scaling-group-name "$ASG_NAME" \
+              --instance-refresh-ids "$ID" \
+              --query "InstanceRefreshes[0].Status" \
               --output text)
-            echo "Instance count: $count (try $i/60)"
-            if [ "$count" = "0" ]; then
-              break
-            fi
-            sleep 5
-          done
 
-          echo "Set desired capacity back to 1"
-          aws autoscaling update-auto-scaling-group \
-            --auto-scaling-group-name "$ASG_NAME" \
-            --min-size 1 \
-            --desired-capacity 1 \
-            --max-size 1
-
-          echo "Wait for new instance to be InService..."
-          for i in $(seq 1 90); do
-            lifecycle=$(aws autoscaling describe-auto-scaling-groups \
+            PERCENT=$(aws autoscaling describe-instance-refreshes \
               --auto-scaling-group-name "$ASG_NAME" \
-              --query 'AutoScalingGroups[0].Instances[0].LifecycleState' \
-              --output text 2>/dev/null || echo "None")
-            health=$(aws autoscaling describe-auto-scaling-groups \
+              --instance-refresh-ids "$ID" \
+              --query "InstanceRefreshes[0].PercentageComplete" \
+              --output text)
+
+            REASON=$(aws autoscaling describe-instance-refreshes \
               --auto-scaling-group-name "$ASG_NAME" \
-              --query 'AutoScalingGroups[0].Instances[0].HealthStatus' \
-              --output text 2>/dev/null || echo "None")
+              --instance-refresh-ids "$ID" \
+              --query "InstanceRefreshes[0].StatusReason" \
+              --output text)
 
-            echo "LifecycleState=$lifecycle HealthStatus=$health (try $i/90)"
+            echo "Status: $STATUS | Progress: $PERCENT% | Reason: $REASON"
 
-            if [ "$lifecycle" = "InService" ] && [ "$health" = "Healthy" ]; then
-              echo "V2 AI ASG is back online"
+            if [ "$STATUS" = "Successful" ]; then
+              echo "Instance refresh completed"
               exit 0
             fi
-            sleep 10
+
+            if [ "$STATUS" = "Failed" ] || [ "$STATUS" = "Cancelled" ]; then
+              echo "Instance refresh failed"
+              exit 1
+            fi
+
+            sleep 20
           done
 
-          echo "Timed out waiting for ASG to become healthy"
+          echo "Refresh timeout"
+          cancel_refresh
           exit 1
 
       - name: Remove IP from Security Group (prod + optional dev)
@@ -516,18 +513,10 @@ jobs:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           AWS_REGION: ap-northeast-2
-          PROD_SG: ${{ secrets.SECURITY_GROUP_ID }}
           DEV_SG: ${{ secrets.SECURITY_GROUP_ID_DEV }}
         run: |
           set -euo pipefail
           ip="${{ steps.get-ip.outputs.ipv4 }}/32"
-
-          aws ec2 revoke-security-group-ingress \
-            --group-id "$PROD_SG" \
-            --protocol tcp \
-            --port 22 \
-            --cidr "$ip" \
-            || echo "Failed to remove IP or rule not found (PROD)"
 
           if [ -n "${DEV_SG:-}" ]; then
             aws ec2 revoke-security-group-ingress \
@@ -539,6 +528,7 @@ jobs:
           else
             echo "DEV_SG not set. Skip DEV SG revoke."
           fi
+
 
       - name: Notify Discord on success
         if: success() && steps.decide.outputs.action != 'none'
