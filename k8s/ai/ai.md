@@ -1,0 +1,1 @@
+[k8s] ai api server 폴더
