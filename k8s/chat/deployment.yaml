@@ -22,3 +22,10 @@ spec:
           envFrom:
             - secretRef:
                 name: planit-backend-secret
+          env:
+            - name: SPRING_PROFILES_ACTIVE
+              value: "prod"
+            - name: TZ
+              value: "Asia/Seoul"
+            - name: AWS_REGION
+              value: "ap-northeast-2"
