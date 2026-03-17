@@ -1,0 +1,24 @@
+# 채팅 서버 Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: planit-chat
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: planit-chat
+  template:
+    metadata:
+      labels:
+        app: planit-chat
+    spec:
+      containers:
+        - name: chat
+          image: 713881824287.dkr.ecr.ap-northeast-2.amazonaws.com/planit-was:prod
+          ports:
+            - containerPort: 8080 
+          # backend secret과 통일하여 사용
+          envFrom:
+            - secretRef:
+                name: planit-backend-secret

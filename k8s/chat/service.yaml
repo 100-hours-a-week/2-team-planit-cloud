@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: planit-chat-service
+spec:
+  selector:
+    app: planit-chat
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8080
+  type: ClusterIP
