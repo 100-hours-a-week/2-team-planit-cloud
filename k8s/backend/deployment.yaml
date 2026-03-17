@@ -1,0 +1,23 @@
+# 백엔드 Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: planit-backend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: planit-backend
+  template:
+    metadata:
+      labels:
+        app: planit-backend
+    spec:
+      containers:
+        - name: app
+          image: 713881824287.dkr.ecr.ap-northeast-2.amazonaws.com/planit-was:prod
+          ports:
+            - containerPort: 8080
+          envFrom:
+            - secretRef:
+                name: planit-backend-secret
