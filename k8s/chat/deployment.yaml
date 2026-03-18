@@ -26,6 +26,12 @@ spec:
           image: 713881824287.dkr.ecr.ap-northeast-2.amazonaws.com/planit-was:prod
           ports:
             - containerPort: 8080 
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: 8080
+            initialDelaySeconds: 30 # 켜지고 30초 뒤부터 찌르기 시작
+            periodSeconds: 10
           # backend secret과 통일하여 사용
           envFrom:
             - secretRef:

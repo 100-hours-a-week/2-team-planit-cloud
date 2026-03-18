@@ -26,6 +26,12 @@ spec:
           image: 713881824287.dkr.ecr.ap-northeast-2.amazonaws.com/planit-was:prod
           ports:
             - containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 10
           envFrom:
             - secretRef:
                 name: planit-backend-secret
