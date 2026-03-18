@@ -16,7 +16,6 @@ spec:
     spec:
       containers:
         - name: ai
-          # TODO: 실제 AI API 이미지로 교체
           image: 713881824287.dkr.ecr.ap-northeast-2.amazonaws.com/planit-ai:prod
           ports:
             - containerPort: 8000
@@ -27,17 +26,30 @@ spec:
             limits:
               cpu: 800m
               memory: 800Mi
-          envFrom:
-            # TODO: 필요 시 별도 secret/configmap로 분리
-            - secretRef:
-                name: planit-backend-secret
-                optional: true
-            - configMapRef:
-                name: planit-ai-config
-                optional: true
-            - secretRef:
-                name: planit-ai-secret
-                optional: true
+          # 임시 Probe 설정
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 30
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
       # Pod Anti-Affinity: 동일 서비스 파드가 서로 다른 노드로 분산되도록 선호
       affinity:
         podAntiAffinity:
