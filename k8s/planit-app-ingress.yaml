@@ -1,0 +1,37 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: planit-app-ingress
+  namespace: planit-app
+  annotations:
+    # AWS Load Balancer Controller (ALB)
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    # 필요 시 HTTPS로 확장: listen-ports/certificate-arn 추가
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80}]'
+spec:
+  ingressClassName: alb
+  rules:
+    - http:
+        paths:
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: planit-backend-service
+                port:
+                  number: 80
+          - path: /chat
+            pathType: Prefix
+            backend:
+              service:
+                name: planit-chat-service
+                port:
+                  number: 80
+          - path: /ai
+            pathType: Prefix
+            backend:
+              service:
+                name: planit-ai-service
+                port:
+                  number: 80
