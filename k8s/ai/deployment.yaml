@@ -1,0 +1,71 @@
+# AI API Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: planit-ai
+  namespace: planit-app
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: planit-ai
+  template:
+    metadata:
+      labels:
+        app: planit-ai
+    spec:
+      containers:
+        - name: ai
+          # TODO: 실제 AI API 이미지로 교체
+          image: 713881824287.dkr.ecr.ap-northeast-2.amazonaws.com/planit-ai:prod
+          ports:
+            - containerPort: 8000
+          resources:
+            requests:
+              cpu: 800m
+              memory: 800Mi
+            limits:
+              cpu: 800m
+              memory: 800Mi
+          envFrom:
+            # TODO: 필요 시 별도 secret/configmap로 분리
+            - secretRef:
+                name: planit-backend-secret
+                optional: true
+            - configMapRef:
+                name: planit-ai-config
+                optional: true
+            - secretRef:
+                name: planit-ai-secret
+                optional: true
+      # Pod Anti-Affinity: 동일 서비스 파드가 서로 다른 노드로 분산되도록 선호
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: planit-ai
+                topologyKey: kubernetes.io/hostname
+            # Workload Anti-Affinity(상성 격리): chat 파드와 같은 노드 배치 회피(선호)
+            - weight: 80
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: planit-chat
+                topologyKey: kubernetes.io/hostname
+      # Topology Spread: AZ/노드 균형 분산
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app: planit-ai
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app: planit-ai
