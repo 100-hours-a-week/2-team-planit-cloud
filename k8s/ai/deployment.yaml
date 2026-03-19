@@ -38,9 +38,13 @@ spec:
             timeoutSeconds: 2
             failureThreshold: 30
           readinessProbe:
-            tcpSocket:
+            httpGet:
+              path: /health
               port: 8000
             periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 3
+            successThreshold: 1
           livenessProbe:
             tcpSocket:
               port: 8000
